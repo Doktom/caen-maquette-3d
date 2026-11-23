@@ -2976,6 +2976,260 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     return g;
   }
 
+  // ---------- Presqu'île : architectures récentes, une par une ----------
+  // Chaque bâtiment est retrouvé par le centre de son emprise (repère de la maquette) puis construit
+  // selon ce que montrent les vues 3D et les photos.
+  const PRESQ = [
+    { at: [909, 192], kind: 'library', h: 16 },            // Bibliothèque Alexis de Tocqueville (OMA, 2017)
+    { at: [987, 49], kind: 'tribunal', h: 21 },            // Tribunal judiciaire
+    { at: [1165, 253], kind: 'dome', h: 24 },              // Le Dôme (Bruther)
+    { at: [1150, 320], kind: 'cargo', h: 14 },             // Le Cargö
+    { at: [939, 291], kind: 'pavillon', h: 8.5 },          // Le Pavillon
+    { at: [996, 281], kind: 'stack', h: 25, tone: 'dark' },  // Cap 360 et l'îlot du quai François Mitterrand
+    { at: [958, 237], kind: 'stack', h: 20, tone: 'dark' },
+    { at: [943, 259], kind: 'stack', h: 17, tone: 'white' },
+    { at: [975, 217], kind: 'stack', h: 17, tone: 'white' },
+    { at: [1064, 162], kind: 'stack', h: 19, tone: 'white', oval: [1035, 165] }, // Quai XIX et sa tour ovale
+    { at: [842, 131], kind: 'flat', h: 19, tone: 'white', roof: 0x6e2a30 },        // immeuble blanc au toit bordeaux
+    { at: [1112, 119], kind: 'brick', h: 16 }, { at: [1129, 158], kind: 'brick', h: 13 }, { at: [1096, 186], kind: 'brick', h: 15 },
+    { at: [1113, 190], kind: 'brick', h: 16 }, { at: [1094, 106], kind: 'brick', h: 15 }, { at: [1088, 147], kind: 'brick', h: 12 },
+    { at: [1131, 83], kind: 'shed', h: 10 },               // anciens entrepôts du port, toits en sheds
+    { at: [1114, 22], kind: 'flat', h: 15, tone: 'office' }, { at: [1089, 88], kind: 'flat', h: 13, tone: 'office' },
+    { at: [1061, 93], kind: 'flat', h: 14, tone: 'office' }, { at: [1105, 74], kind: 'flat', h: 12, tone: 'office' }
+  ];
+
+  function presquileZone(data, exclude) {
+    const picked = [];
+    for (const s of PRESQ) {
+      let best = null, bd = 7;
+      for (const b of data.b) {
+        if (exclude(b) || picked.some(p => p.b === b)) continue;
+        const r = pairs(b[6]); let x = 0, z = 0; for (const p of r) { x += p[0]; z += p[1]; }
+        const d = Math.hypot(x / r.length - s.at[0], z / r.length - s.at[1]);
+        if (d < bd) { bd = d; best = b; }
+      }
+      if (best) picked.push({ b: best, s });
+    }
+    return picked;
+  }
+
+  function buildPresquile(picked, hookNight) {
+    const V = (x, y, z) => new THREE.Vector3(x, y, z), up = V(0, 1, 0), down = V(0, -1, 0);
+    const g = new THREE.Group();
+    function mkBuf() {
+      const pos = [], col = [], uv = [], e1 = V(0, 0, 0), e2 = V(0, 0, 0), nn = V(0, 0, 0);
+      const B = {
+        tri(a, b, c, color, want, ua = [0, 0], ub = [0, 0], uc = [0, 0]) {
+          e1.subVectors(b, a); e2.subVectors(c, a); nn.crossVectors(e1, e2);
+          if (want && nn.dot(want) < 0) { let t = b; b = c; c = t; t = ub; ub = uc; uc = t; }
+          for (const [p, u] of [[a, ua], [b, ub], [c, uc]]) { pos.push(p.x, p.y, p.z); col.push(color.r, color.g, color.b); uv.push(u[0], u[1]); }
+        },
+        quad(a, b, c, d, color, want, u) { u = u || [[0, 0], [0, 0], [0, 0], [0, 0]]; B.tri(a, b, c, color, want, u[0], u[1], u[2]); B.tri(a, c, d, color, want, u[0], u[2], u[3]); },
+        geo() { const g2 = new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g2.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g2.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g2.computeVertexNormals(); return g2; }
+      };
+      return B;
+    }
+    // textures de façade (une tuile = largeur × hauteur en mètres indiquées)
+    const tex = (w, h, draw) => { const t = canvasTex(256, draw); t.userData = { w, h }; return t; };
+    const T_LIB = tex(4.8, 5.3, (c, s) => {
+      const gr = c.createLinearGradient(0, 0, 0, s); gr.addColorStop(0, '#9cc3c4'); gr.addColorStop(1, '#6f9ea3'); c.fillStyle = gr; c.fillRect(0, 0, s, s);
+      c.fillStyle = 'rgba(255,255,255,0.18)'; c.fillRect(0, 0, s, s * 0.3);
+      c.fillStyle = '#f4f6f6'; for (let x = 0; x < s; x += 64) c.fillRect(x, 0, 5, s); c.fillRect(0, 0, s, 16);
+    });
+    const T_DARK = tex(6, 3, (c, s) => { // anthracite, baies verticales, nez de dalle blanc
+      c.fillStyle = '#2b2e32'; c.fillRect(0, 0, s, s); noise(c, 800, s, ['rgba(0,0,0,0.15)', 'rgba(255,255,255,0.06)'], 1.5);
+      for (const x of [20, 110, 190]) { c.fillStyle = '#2a3138'; c.fillRect(x, 60, 46, 150); c.fillStyle = 'rgba(160,190,210,0.25)'; c.fillRect(x, 60, 46, 40); c.fillStyle = '#9aa0a5'; c.fillRect(x - 2, 58, 50, 3); }
+      c.fillStyle = '#f2f2ef'; c.fillRect(0, 226, s, 30);
+    });
+    const T_WHITE = tex(6, 3, (c, s) => { // logements blancs, baies et garde-corps vitrés
+      c.fillStyle = '#f2f1ec'; c.fillRect(0, 0, s, s);
+      for (const x of [16, 104, 186]) { c.fillStyle = '#39424b'; c.fillRect(x, 54, 56, 160); c.fillStyle = 'rgba(170,200,220,0.3)'; c.fillRect(x, 54, 56, 50); }
+      c.fillStyle = 'rgba(180,205,215,0.45)'; c.fillRect(0, 160, s, 56); c.fillStyle = '#ffffff'; c.fillRect(0, 216, s, 40);
+    });
+    const T_OFFICE = tex(6, 3.4, (c, s) => {
+      c.fillStyle = '#e7e7e3'; c.fillRect(0, 0, s, s); c.fillStyle = '#323b44'; c.fillRect(0, 70, s, 130); c.fillStyle = 'rgba(170,195,215,0.3)'; c.fillRect(0, 70, s, 40);
+      c.fillStyle = '#c9cdd0'; for (let x = 0; x < s; x += 43) c.fillRect(x, 70, 3, 130);
+    });
+    const T_BRICK = tex(5, 3.2, (c, s) => {
+      c.fillStyle = '#8a4a36'; c.fillRect(0, 0, s, s);
+      for (let y = 0; y < s; y += 8) { const o = (y / 8) % 2 ? 8 : 0; for (let x = -o; x < s; x += 16) { const l = 0.85 + Math.random() * 0.25; c.fillStyle = `rgb(${138 * l | 0},${74 * l | 0},${54 * l | 0})`; c.fillRect(x + 1, y + 1, 14, 6); } }
+      for (const x of [30, 150]) { c.fillStyle = '#e4ddd0'; c.fillRect(x - 4, 50, 84, 160); c.fillStyle = '#2f363d'; c.fillRect(x, 54, 76, 152); c.fillStyle = '#e4ddd0'; c.fillRect(x + 36, 54, 4, 152); for (let y = 54; y < 206; y += 30) c.fillRect(x, y, 76, 3); }
+    });
+    const T_CLAD = tex(4, 4, (c, s) => { c.fillStyle = '#c9cdd1'; c.fillRect(0, 0, s, s); for (let y = 0; y < s; y += 10) { c.fillStyle = 'rgba(0,0,0,0.12)'; c.fillRect(0, y, s, 3); c.fillStyle = 'rgba(255,255,255,0.25)'; c.fillRect(0, y + 4, s, 2); } });
+    const T_POLY = tex(4, 3.3, (c, s) => { // polycarbonate laiteux, montants et dalles visibles
+      c.fillStyle = '#e8ecee'; c.fillRect(0, 0, s, s); c.fillStyle = 'rgba(120,130,140,0.25)'; for (let x = 0; x < s; x += 16) c.fillRect(x, 0, 2, s);
+      c.fillStyle = '#5d6369'; c.fillRect(0, 232, s, 24); c.fillStyle = 'rgba(90,100,110,0.35)'; c.beginPath(); c.moveTo(0, 232); c.lineTo(s, 0); c.lineTo(s, 12); c.lineTo(12, 232); c.fill();
+    });
+    const T_SHED = tex(4, 4, (c, s) => { c.fillStyle = '#a7aaa8'; c.fillRect(0, 0, s, s); for (let x = 0; x < s; x += 12) { c.fillStyle = 'rgba(0,0,0,0.15)'; c.fillRect(x, 0, 4, s); } c.fillStyle = '#4c5257'; c.fillRect(20, 40, 216, 60); });
+    const bufs = new Map(); // un tampon par texture
+    const bufFor = (t) => { if (!bufs.has(t)) bufs.set(t, mkBuf()); return bufs.get(t); };
+    const plain = mkBuf(), glassB = mkBuf();
+    // mur texturé le long d'un contour, entre deux hauteurs
+    function walls(ring, y0, y1, t, color = C(0xffffff), vOff = 0) {
+      const { E } = ringCols(ring), B = bufFor(t), w = t.userData.w, h = t.userData.h;
+      for (const e of E) B.quad(V(e.a[0], y0, e.a[1]), V(e.b[0], y0, e.b[1]), V(e.b[0], y1, e.b[1]), V(e.a[0], y1, e.a[1]), color, V(e.nx, 0, e.nz),
+        [[0, (y0 - vOff) / h], [e.L / w, (y0 - vOff) / h], [e.L / w, (y1 - vOff) / h], [0, (y1 - vOff) / h]]);
+      return E;
+    }
+    function cap(ring, y, color, B = plain, face = up) {
+      const f = []; for (const p of ring) f.push(p[0], p[1]);
+      for (const t of triangulate([f])) B.tri(V(t[0].x, y, t[0].y), V(t[1].x, y, t[1].y), V(t[2].x, y, t[2].y), color, face);
+    }
+    const grow = (ring, d) => { const sg = signed(ring) > 0 ? 1 : -1; return offsetRing(ring, d, sg) || ring; }; // d > 0 : vers l'intérieur
+    const pca = (ring) => {
+      let cx = 0, cz = 0; for (const p of ring) { cx += p[0]; cz += p[1]; } cx /= ring.length; cz /= ring.length;
+      let sxx = 0, szz = 0, sxz = 0; for (const p of ring) { const dx = p[0] - cx, dz = p[1] - cz; sxx += dx * dx; szz += dz * dz; sxz += dx * dz; }
+      const a = 0.5 * Math.atan2(2 * sxz, sxx - szz); return { cx, cz, ux: Math.cos(a), uz: Math.sin(a) };
+    };
+    const signTexture = (text, bg, fg, w, h, vertical = false) => {
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
+      x.fillStyle = bg; x.fillRect(0, 0, w, h); x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
+      if (vertical) { x.font = `800 ${w * 0.7}px Archivo, Arial, sans-serif`; [...text].forEach((ch, i) => x.fillText(ch, w / 2, h * (i + 0.5) / text.length)); }
+      else { x.font = `800 ${h * 0.62}px Archivo, Arial, sans-serif`; x.fillText(text, w / 2, h * 0.54); }
+      const t = new THREE.CanvasTexture(c); t.anisotropy = ANISO; return t;
+    };
+    const decals = [];
+    const decal = (t, w, h, x, y, z, nx, nz) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: t })); m.position.set(x + nx * 0.12, y, z + nz * 0.12); m.rotation.y = Math.atan2(nx, nz); g.add(m); decals.push(m); };
+    const fins = [], finsN = [];
+
+    for (const { b, s } of picked) {
+      const ring = pairs(simplifyFlat(b[6])); if (ring.length < 3) continue;
+      const H = s.h;
+      if (s.kind === 'library') {
+        // rez-de-chaussée vitré en retrait sous des ailes en porte-à-faux, dalles blanches, toit blanc à patios
+        const inner = grow(ring, 2.2);
+        walls(inner, 0, 4.6, T_LIB, C(0xdfeeee), 0);
+        cap(ring, 4.6, C(0xf1f2f0), plain, down);
+        walls(ring, 4.6, H, T_LIB, C(0xffffff), 4.6 - 5.3);
+        walls(ring, H, H + 0.9, T_CLAD, C(0xf6f6f4));
+        cap(ring, H + 0.9, C(0xe9e9e6));
+        const o = pca(ring);
+        for (const [du, dv] of [[16, 0], [-16, 0], [0, 16], [0, -16]]) {
+          const x = o.cx + o.ux * du - o.uz * dv, z = o.cz + o.uz * du + o.ux * dv, hs = 4.5;
+          const sq = [[x - hs, z - hs], [x + hs, z - hs], [x + hs, z + hs], [x - hs, z + hs]].map(([px, pz]) => [o.cx + (px - o.cx), pz]);
+          if (sq.every(p => pip(p[0], p[1], ring))) cap(sq, H + 0.95, C(0x5f7d86), glassB);
+        }
+      } else if (s.kind === 'tribunal') {
+        // socle vitré en retrait, auvent, cube de lames verticales blanches, oculus et patios en croix
+        const inner = grow(ring, 1.6);
+        walls(inner, 0, 4.2, T_LIB, C(0x9fd0cc));
+        const eave = grow(ring, -1.2); cap(eave, 4.2, C(0xf2f3f1)); cap(eave, 4.0, C(0xe6e7e4), plain, down);
+        walls(eave, 4.0, 4.2, T_CLAD, C(0xf4f4f2));
+        const dark = grow(ring, 0.4); walls(dark, 4.2, H, T_DARK, C(0x6a7076));
+        cap(dark, H, C(0xa9aaa6));
+        for (const e of ringCols(ring).E) for (let t = 0.35; t < e.L; t += 0.75) fins.push([e.a[0] + e.ux * t, e.a[1] + e.uz * t, Math.atan2(e.uz, e.ux)]);
+        const o = pca(ring);
+        const ocu = new THREE.Mesh(new THREE.CylinderGeometry(8, 8.6, 0.9, 40), new THREE.MeshPhongMaterial({ color: 0x8fb4c2, shininess: 100, specular: 0xcfe4ee }));
+        ocu.position.set(o.cx, H + 0.45, o.cz); g.add(ocu);
+        for (const [du, dv] of [[18, 0], [-18, 0], [0, 18], [0, -18]]) {
+          const x = o.cx + o.ux * du - o.uz * dv, z = o.cz + o.uz * du + o.ux * dv;
+          const sq = [[-5, -3], [5, -3], [5, 3], [-5, 3]].map(([a, c2]) => { const aa = Math.abs(du) > 0 ? [a, c2] : [c2, a]; return [x + o.ux * aa[0] - o.uz * aa[1], z + o.uz * aa[0] + o.ux * aa[1]]; });
+          cap(sq, H + 0.05, C(0x4a5a63), glassB);
+        }
+      } else if (s.kind === 'dome') {
+        // tour translucide à dalles apparentes, coupole blanche facettée, cage d'escalier « DÔME »
+        walls(ring, 0, H, T_POLY, C(0xffffff));
+        cap(ring, H, C(0xd9dcde));
+        const o = pca(ring); let r = 1e9; for (const p of ring) r = Math.min(r, Math.hypot(p[0] - o.cx, p[1] - o.cz));
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(Math.max(6, r * 0.95), 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xf6f7f7, flatShading: true }));
+        dome.position.set(o.cx, H, o.cz); dome.castShadow = dome.receiveShadow = true; g.add(dome);
+        // cage d'escalier sur la face ouest, avec l'inscription verticale
+        let we = null; for (const e of ringCols(ring).E) if (e.L > 4 && (!we || e.nx < we.nx)) we = e;
+        if (we) {
+          const mx = (we.a[0] + we.b[0]) / 2 + we.nx * 1.6, mz = (we.a[1] + we.b[1]) / 2 + we.nz * 1.6;
+          const tower = [[mx - we.ux * 1.8 - we.nx * 1.6, mz - we.uz * 1.8 - we.nz * 1.6], [mx + we.ux * 1.8 - we.nx * 1.6, mz + we.uz * 1.8 - we.nz * 1.6], [mx + we.ux * 1.8 + we.nx * 1.6, mz + we.uz * 1.8 + we.nz * 1.6], [mx - we.ux * 1.8 + we.nx * 1.6, mz - we.uz * 1.8 + we.nz * 1.6]];
+          walls(tower, 0, H + 2, T_CLAD, C(0x8e959b)); cap(tower, H + 2, C(0x6c7378));
+          decal(signTexture('DÔME', '#4a5055', '#f2f2f0', 128, 512, true), 2.6, 11, mx + we.nx * 1.6, H - 6, mz + we.nz * 1.6, we.nx, we.nz);
+        }
+      } else if (s.kind === 'cargo') {
+        // grand volume gris à bardage nervuré, soubassement sombre, enseigne rouge en angle
+        walls(ring, 0, 3.2, T_DARK, C(0x5a6d72));
+        walls(ring, 3.2, H, T_CLAD, C(0xffffff));
+        cap(ring, H, C(0xbcc0c3));
+        let we = null; for (const e of ringCols(ring).E) if (e.L > 10 && (!we || e.nx + e.nz * 0.5 < we.nx + we.nz * 0.5)) we = e;
+        if (we) decal(signTexture('LE CARGÖ', '#cf1f2e', '#ffffff', 512, 256), 12, 6, we.a[0] + we.ux * Math.min(8, we.L / 2), H - 4, we.a[1] + we.uz * Math.min(8, we.L / 2), we.nx, we.nz);
+      } else if (s.kind === 'pavillon') {
+        // volume anthracite largement vitré, toit débordant
+        const E = walls(ring, 0, H, T_DARK, C(0x8a8f95));
+        for (const e of E) if (e.L > 8) { const B = bufFor(T_LIB); B.quad(V(e.a[0] + e.nx * 0.05, 0.2, e.a[1] + e.nz * 0.05), V(e.b[0] + e.nx * 0.05, 0.2, e.b[1] + e.nz * 0.05), V(e.b[0] + e.nx * 0.05, H * 0.62, e.b[1] + e.nz * 0.05), V(e.a[0] + e.nx * 0.05, H * 0.62, e.a[1] + e.nz * 0.05), C(0xbfe0e0), V(e.nx, 0, e.nz), [[0, 0], [e.L / 4.8, 0], [e.L / 4.8, 1], [0, 1]]); }
+        const eave = grow(ring, -1.5); cap(eave, H, C(0x2f3236)); cap(eave, H - 0.3, C(0x26282b), plain, down); walls(eave, H - 0.3, H, T_CLAD, C(0x3a3d41));
+      } else if (s.kind === 'stack') {
+        // volumes empilés et décalés : porte-à-faux, retraits, nez de dalle marqués
+        const t = s.tone === 'dark' ? T_DARK : T_WHITE;
+        const tiers = [[0, H * 0.36, 0], [H * 0.36, H * 0.64, -1.2], [H * 0.64, H * 0.86, 0.8], [H * 0.86, H, 2.6]];
+        for (const [y0, y1, d] of tiers) {
+          const rr = d === 0 ? ring : grow(ring, d);
+          walls(rr, y0, y1, t, C(0xffffff), y0);
+          cap(rr, y1, s.tone === 'dark' ? C(0x6f7376) : C(0xe8e8e4));
+          if (d < 0) cap(rr, y0, C(0xf0f0ee), plain, down);
+          walls(grow(rr, -0.15), y1 - 0.3, y1, T_CLAD, C(0xfafaf8));
+        }
+        if (s.oval) {
+          // tour ovale à bandeaux de balcons blancs
+          const [ox, oz] = s.oval, N = 28, ov = [];
+          for (let k = 0; k < N; k++) { const a = k / N * Math.PI * 2; ov.push([ox + Math.cos(a) * 10, oz + Math.sin(a) * 7]); }
+          walls(ov, 0, 34, T_WHITE, C(0xffffff)); cap(ov, 34, C(0xdedfdc));
+          for (let y = 3; y < 34; y += 3) walls(grow(ov, -0.9), y - 0.25, y, T_CLAD, C(0xffffff));
+          for (let y = 3; y < 34; y += 3) { cap(grow(ov, -0.9), y, C(0xf4f4f2)); cap(grow(ov, -0.9), y - 0.25, C(0xe6e6e3), plain, down); }
+        }
+      } else if (s.kind === 'flat') {
+        const t = s.tone === 'office' ? T_OFFICE : T_WHITE;
+        walls(ring, 0, H, t, C(0xffffff));
+        walls(grow(ring, -0.1), H, H + 0.8, T_CLAD, C(0xf2f2ef));
+        cap(ring, H + 0.8, s.roof ? C(s.roof) : C(0xb9bbb8));
+      } else if (s.kind === 'brick') {
+        walls(ring, 0, H, T_BRICK, C(0xffffff));
+        walls(ring, H, H + 0.6, T_CLAD, C(0xd6cfc2));
+        cap(ring, H + 0.6, C(0x8f9294));
+      } else if (s.kind === 'shed') {
+        // halle portuaire : murs de tôle, toiture en sheds dans l'axe principal
+        walls(ring, 0, H, T_SHED, C(0xffffff));
+        cap(ring, H, C(0x8c8f8f));
+        const o = pca(ring); let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
+        for (const p of ring) { const u = (p[0] - o.cx) * o.ux + (p[1] - o.cz) * o.uz, v = -(p[0] - o.cx) * o.uz + (p[1] - o.cz) * o.ux; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+        const P = (u, v, y) => V(o.cx + o.ux * u - o.uz * v, y, o.cz + o.uz * u + o.ux * v);
+        for (let u = u0 + 1; u + 7 < u1; u += 8) {
+          if (!pip(...[P(u + 4, (v0 + v1) / 2, 0)].map(p => [p.x, p.z])[0], ring)) continue;
+          const a = u, b2 = u + 7, va = v0 + 1, vb = v1 - 1;
+          plain.quad(P(a, va, H), P(a, vb, H), P(b2, vb, H + 3), P(b2, va, H + 3), C(0x9a9d9c), V(-o.ux, 1, -o.uz));
+          glassB.quad(P(b2, va, H), P(b2, vb, H), P(b2, vb, H + 3), P(b2, va, H + 3), C(0x7f9aa6), V(o.ux, 0, o.uz));
+        }
+      }
+    }
+    // lames verticales du tribunal : une seule géométrie répétée
+    if (fins.length) {
+      const fg = new THREE.BoxGeometry(0.14, 1, 0.55); fg.translate(0, 0.5, 0.2);
+      const fm = new THREE.InstancedMesh(fg, lam({ color: 0xf4f4f1 }), fins.length);
+      const m4 = new THREE.Matrix4(), tri = picked.find(p => p.s.kind === 'tribunal');
+      const Hf = tri ? tri.s.h : 21, sg = tri && signed(pairs(tri.b[6])) > 0 ? 1 : -1;
+      fins.forEach(([x, z, a], i) => { m4.makeRotationY(-a + (sg > 0 ? Math.PI : 0)); m4.scale(V(1, Hf - 4.2, 1)); m4.setPosition(x, 4.2, z); fm.setMatrixAt(i, m4); });
+      fm.castShadow = fm.receiveShadow = true; g.add(fm);
+    }
+
+    // sol : terrain en herbe sèche, anneau de land art, sculpture de sphères d'acier
+    const field = [[940, 146], [991, 117], [1083, 248], [1055, 262]];
+    const fieldMesh = flatMesh([[field.flat()]], 0.07, lam({ color: 0xa79a6c }), 10); scene.add(layer(fieldMesh, 3.5));
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(15, 0.9, 8, 64), lam({ color: 0xf2f2ef })); ring2.rotation.x = Math.PI / 2; ring2.position.set(1004, 0.5, 190); ring2.castShadow = true; g.add(ring2);
+    const steel = new THREE.MeshPhongMaterial({ color: 0xc9ced3, shininess: 120, specular: 0xffffff });
+    for (let k = 0; k < 14; k++) { const sp = new THREE.Mesh(new THREE.SphereGeometry(0.9 + hashI(k, 3) * 1.4, 16, 12), steel); sp.position.set(868 + (hashI(k, 4) - 0.5) * 9, 1.2 + hashI(k, 5) * 5, 72 + (hashI(k, 6) - 0.5) * 9); sp.castShadow = true; g.add(sp); }
+
+    // matériaux : textures de façade, tampons de couleur, vitrages
+    for (const [t, B] of bufs) { const m = new THREE.Mesh(B.geo(), lam({ map: t, vertexColors: true })); m.castShadow = m.receiveShadow = true; g.add(m); }
+    const pm = new THREE.Mesh(plain.geo(), lam({ vertexColors: true, side: THREE.DoubleSide })); pm.castShadow = pm.receiveShadow = true; g.add(pm);
+    const gm = new THREE.Mesh(glassB.geo(), new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 90, specular: 0xbcd0dc, side: THREE.DoubleSide })); g.add(gm);
+    // la nuit : vitrages de la bibliothèque et du Pavillon allumés
+    const libLit = [...bufs.keys()].find(t => t === T_LIB);
+    g.traverse(o => { if (o.isMesh && o.material.map === libLit) { o.material.emissive = new THREE.Color(0xffe2b0); o.material.emissiveMap = libLit; o.material.emissiveIntensity = 0; hookNight.push([o.material, 0.45]); } });
+    whiteHooks.push(on => g.traverse(o => {
+      if (!o.isMesh) return;
+      const m = o.material, u = m.userData;
+      if (u.map === undefined) { u.map = m.map || null; u.vc = m.vertexColors; u.c0 = m.color.getHex(); }
+      m.map = on ? null : u.map; m.vertexColors = on ? false : u.vc; m.color.set(on ? 0xf6f4f0 : u.c0); m.needsUpdate = true;
+    }));
+    solids.add(g);
+    return g;
+  }
+
   // ---------- Post-traitement ----------
   const composer = new THREE.EffectComposer(renderer);
   composer.setPixelRatio(PR);
@@ -3173,6 +3427,11 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     const vaugSet = new Set(vz.list);
     buildVaugueux(vz, nightMats);
     data.labels.push(['Quartier du Vaugueux', 241, -172, 14]);
+    // presqu'île : architectures récentes reconstituées une par une
+    const pq = presquileZone(data, b => ofCastle(b) || churchB.has(b) || OVR.has(b) || vaugSet.has(b));
+    for (const p of pq) vaugSet.add(p.b);
+    buildPresquile(pq, nightMats);
+    data.labels.push(["Presqu'île", 1005, 190, 22]);
     // les grands îlots de la Reconstruction à part : ils disparaissent quand on remonte à l'été 1944
     const town = data.b.filter(b => !ofCastle(b) && !churchB.has(b) && !vaugSet.has(b));
     const isReco = (b) => { if (b[1] !== 0 || OVR.has(b)) return false; const r = pairs(b[6]); return Math.abs(signed(r)) / 2 >= (r[0][0] < -150 ? 420 : 220); };
@@ -3376,6 +3635,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
   document.getElementById('shot-x').addEventListener('click', () => { document.getElementById('shot').hidden = true; });
 
   const TOUR = [
+    ["Presqu'île", "Ancien quartier portuaire en pleine mutation entre le bassin Saint-Pierre et le canal : bibliothèque Alexis de Tocqueville de Rem Koolhaas (2017), tribunal judiciaire, Le Dôme, salle de concerts du Cargö."],
     ['Quartier du Vaugueux', "Petit quartier ancien au pied du château, en grande partie épargné en 1944 : maisons à pans de bois et de pierre de Caen, rue piétonne pavée bordée de restaurants."],
     ['Château de Caen', "Fondé vers 1060 par Guillaume le Conquérant, c'est l'une des plus vastes enceintes fortifiées d'Europe. Il abrite aujourd'hui le Musée des Beaux-Arts et le Musée de Normandie."],
     ['Maison des Quatrans', "Maison à pans de bois de la fin du Moyen Âge, l'une des plus anciennes de Caen, au pied du château."],
