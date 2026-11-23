@@ -1220,7 +1220,9 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
 
   const trams = [];
   function buildTrams(runs) {
-    const bodyMat = lam({ color: 0xf2f2ee }), bandMat = lam({ color: 0x2c3036, emissive: 0xffe0b0, emissiveIntensity: 0 });
+    // rames type Citadis : caisse gris argenté, bandeau vitré continu, nez sombre, équipements de toiture
+    const bodyMat = lam({ color: 0xe1e4e7 }), bandMat = lam({ color: 0x24282d, emissive: 0xffe0b0, emissiveIntensity: 0 });
+    const roofMat = lam({ color: 0x9aa0a6 }), noseMat = lam({ color: 0x2a2e33 }), skirtMat = lam({ color: 0x6d7378 });
     nightMats.push([bandMat, 0.8]);
     runs.forEach((f, ri) => {
       const p = pairs(f), cum = [0];
@@ -1228,13 +1230,32 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
       const cars = [];
       for (let k = 0; k < 4; k++) {
         const car = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(7.6, 3.0, 2.5), bodyMat); body.position.y = 1.9;
-        const band = new THREE.Mesh(new THREE.BoxGeometry(7.65, 1.0, 2.55), bandMat); band.position.y = 2.3;
-        car.add(body, band);
+        const body = new THREE.Mesh(new THREE.BoxGeometry(7.75, 2.7, 2.4), bodyMat); body.position.y = 1.85;
+        const band = new THREE.Mesh(new THREE.BoxGeometry(7.8, 1.15, 2.45), bandMat); band.position.y = 2.15;
+        const skirt = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.35, 2.42), skirtMat); skirt.position.y = 0.55;
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.35, 1.6), roofMat); roof.position.y = 3.38;
+        car.add(body, band, skirt, roof);
+        if (k === 0 || k === 3) { // cabines : nez arrondi et sombre
+          const nose = new THREE.Mesh(new THREE.CylinderGeometry(1.22, 1.22, 2.6, 16, 1, false, 0, Math.PI), noseMat);
+          nose.rotation.y = k === 0 ? 0 : Math.PI; nose.scale.set(0.55, 1, 1); nose.position.set(k === 0 ? 3.85 : -3.85, 1.9, 0);
+          car.add(nose);
+        }
+        if (k === 1) { const panto = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 0.08), noseMat); panto.position.set(0, 4.0, 0); panto.rotation.z = 0.5; car.add(panto); }
         car.traverse(o => { o.castShadow = true; });
         solids.add(car); cars.push(car);
       }
-      trams.push({ p, cum, len: cum[cum.length - 1], s: (ri * 377) % cum[cum.length - 1], dir: ri % 2 ? -1 : 1, cars });
+      // stations le long de ce parcours (abscisse curviligne)
+      const stops = [];
+      for (const [sx, sz] of tramStations) {
+        let best = null;
+        for (let i = 0; i < p.length - 1; i++) {
+          const a = p[i], b = p[i + 1], dx = b[0] - a[0], dz = b[1] - a[1], LL = dx * dx + dz * dz || 1;
+          const t = Math.max(0, Math.min(1, ((sx - a[0]) * dx + (sz - a[1]) * dz) / LL)), d = Math.hypot(sx - a[0] - dx * t, sz - a[1] - dz * t);
+          if (d < 7 && (!best || d < best.d)) best = { d, s: cum[i] + Math.sqrt(LL) * t };
+        }
+        if (best && !stops.some(s => Math.abs(s - best.s) < 20)) stops.push(best.s + 14);
+      }
+      trams.push({ p, cum, len: cum[cum.length - 1], s: (ri * 377) % cum[cum.length - 1], dir: ri % 2 ? -1 : 1, cars, stops, wait: 0, last: -1 });
     });
   }
   function pathAt(t, d) {
@@ -1245,12 +1266,19 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
   }
   function updateTrams(dt) {
     for (const t of trams) {
-      t.s += t.dir * dt * 11;
-      if (t.s > t.len - 2) { t.s = t.len - 2; t.dir = -1; }
-      if (t.s < 32) { t.s = 32; t.dir = 1; }
+      if (t.wait > 0) { t.wait -= dt; } else {
+        // ralentit à l'approche d'une station, s'y arrête une dizaine de secondes
+        let near = 1e9, idx = -1;
+        t.stops.forEach((s, i) => { const d = (s - t.s) * t.dir; if (d > 0 && d < near && i !== t.last) { near = d; idx = i; } });
+        const v = 11 * Math.min(1, Math.max(0.12, near / 30));
+        t.s += t.dir * dt * v;
+        if (idx >= 0 && near < 0.6) { t.wait = 10; t.last = idx; }
+      }
+      if (t.s > t.len - 2) { t.s = t.len - 2; t.dir = -1; t.last = -1; }
+      if (t.s < 32) { t.s = 32; t.dir = 1; t.last = -1; }
       t.cars.forEach((car, k) => {
-        const [x, z, a] = pathAt(t, t.s - k * 8);
-        car.position.set(x, 0, z); car.rotation.y = -a;
+        const [x, z, a] = pathAt(t, t.s - k * 8 * t.dir);
+        car.position.set(x, 0, z); car.rotation.y = -a + (t.dir < 0 ? Math.PI : 0);
       });
     }
   }
@@ -2451,25 +2479,6 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     });
     frameHooks.push((t) => { jets.forEach((j, i) => { j.scale.y = 1 + 0.12 * Math.sin(t * 6 + i); }); });
 
-    // arrêts de tram : quais et abris vitrés, à intervalles réguliers le long des lignes
-    const glassM = new THREE.MeshLambertMaterial({ color: 0xbfd6e4, transparent: true, opacity: 0.35, depthWrite: false });
-    const darkM = lam({ color: 0x3a3f46 }), quaiM = lam({ color: 0xcfccc4 });
-    for (const f of data.tramRuns) {
-      const p = pairs(f), cum = [0];
-      for (let i = 1; i < p.length; i++) cum.push(cum[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]));
-      for (let sAt = 220; sAt < cum[cum.length - 1] - 120; sAt += 460) {
-        let i = 1; while (i < cum.length - 1 && cum[i] < sAt) i++;
-        const A = p[i - 1], B = p[i], seg = (cum[i] - cum[i - 1]) || 1, t = (sAt - cum[i - 1]) / seg;
-        const ux = (B[0] - A[0]) / seg, uz = (B[1] - A[1]) / seg, x = A[0] + (B[0] - A[0]) * t, z = A[1] + (B[1] - A[1]) * t, ry = -Math.atan2(uz, ux);
-        for (const sd of [-1, 1]) {
-          const ox = -uz * sd, oz = ux * sd;
-          add(new THREE.BoxGeometry(26, 0.3, 2.6), quaiM, x + ox * 3.1, 0.15, z + oz * 3.1, ry);
-          add(new THREE.BoxGeometry(5, 2.3, 1.2), glassM, x + ox * 3.9, 1.45, z + oz * 3.9, ry).castShadow = false;
-          add(new THREE.BoxGeometry(5.6, 0.15, 1.8), darkM, x + ox * 3.8, 2.65, z + oz * 3.8, ry);
-        }
-      }
-    }
-
     // grilles de fer autour des grands jardins
     const posts = [], rails = [];
     for (const pa of data.p) if (pa[0] === 0) {
@@ -2492,6 +2501,479 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     g.add(life);
     solids.add(g);
     return { g, life };
+  }
+
+  // ---------- Quartier du Vaugueux : îlot reconstitué maison par maison ----------
+  // Positions des enseignes relevées sur la vue aérienne (repère de la maquette, en mètres) ;
+  // type de façade et toiture d'après les vues 3D et les photos de rue.
+  const VAUG = { x0: 198, x1: 292, z0: -216, z1: -128 };
+  const VAUG_SHOPS = [
+    { x: 241.1, z: -167, name: 'Maison La Poterne', type: 'timber', beam: 0x5a3a24, infill: 0xefe4cc, roof: 'tile', shop: 0x5e1d20 },
+    { x: 243, z: -196, name: "L'Insolite", type: 'timber', beam: 0x6f8597, infill: 0xf1ece2, roof: 'slate', shop: 0x2c3e50 },
+    { x: 248, z: -187.4, name: 'La Vaugueuse', type: 'timber', beam: 0x4a3326, infill: 0xeadcc0, roof: 'slate', shop: 0x2b2b2b },
+    { x: 228.1, z: -154, name: 'Augia', type: 'stone', roof: 'tile', shop: 0x34463a },
+    { x: 247, z: -152.9, name: 'Bar Basque', type: 'render', render: 0xf2ece0, shop: 0x8a1c22 },
+    { x: 253.5, z: -148.7, name: 'Sacrée Mathilde', type: 'stone', shop: 0x2f4a6e },
+    { x: 227, z: -178, name: 'La Trattoria', type: 'stone', shop: 0x2a5a3a },
+    { x: 217.5, z: -175, name: 'Horace', type: 'stone', shop: 0x232323 },
+    { x: 264.7, z: -191, name: 'Louma', type: 'render', render: 0xe9dfcb, shop: 0x5a2b2b },
+    { x: 265.9, z: -163, name: 'Gavroche', type: 'stone', shop: 0x1f3a52 },
+    { x: 227.3, z: -148.7, name: 'Madame Eugénie', type: 'render', render: 0xf0e6d6, shop: 0x7a2c4a },
+    { x: 224, z: -145, name: 'Crêperie Gaby', type: 'timber', beam: 0x6b4a32, infill: 0xf3e9d4, roof: 'tile', shop: 0xa04a34 },
+    { x: 257.6, z: -145.3, name: 'Le Repaire des Nonnes', type: 'stone', shop: 0x3a2a20 },
+    { x: 271, z: -152.4, name: 'Les Fils à Maman', type: 'render', render: 0xf4efe6, shop: 0xb83227 },
+    { x: 268, z: -158, name: 'Abracadabra', type: 'stone', shop: 0x4a2a6a },
+    { x: 221.7, z: -168, name: 'Ohki', type: 'stone', shop: 0x202020 }
+  ];
+
+  function vaugueuxZone(data, exclude) {
+    const near = (p) => p.some(q => q[0] > VAUG.x0 - 15 && q[0] < VAUG.x1 + 15 && q[1] > VAUG.z0 - 15 && q[1] < VAUG.z1 + 15);
+    const street = data.r.filter(r => r[1] === 2).map(r => pairs(r[2])).filter(near);
+    const dStreet = (x, z) => { let d = 1e9; for (const p of street) for (let i = 0; i < p.length - 1; i++) d = Math.min(d, distSeg([x, z], p[i], p[i + 1])); return d; };
+    const cen = (b) => { const r = pairs(b[6]); let x = 0, z = 0; for (const p of r) { x += p[0]; z += p[1]; } return [x / r.length, z / r.length]; };
+    const list = data.b.filter(b => {
+      if (exclude(b)) return false;
+      const [x, z] = cen(b);
+      return x > VAUG.x0 && x < VAUG.x1 && z > VAUG.z0 && z < VAUG.z1 && dStreet(x, z) < 19;
+    });
+    return { list, street, dStreet, cen };
+  }
+
+  function buildVaugueux(zone, hookNight) {
+    const { list, street, dStreet, cen } = zone;
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    // tampons de géométrie : chaque face garde sa couleur et ses coordonnées de texture (en mètres)
+    function mkBuf() {
+      const pos = [], col = [], uv = [];
+      const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), nn = new THREE.Vector3(), ct = new THREE.Vector3(), fc = new THREE.Vector3();
+      const B = {
+        tri(a, b, c, color, want, ua = [0, 0], ub = [0, 0], uc = [0, 0]) {
+          e1.subVectors(b, a); e2.subVectors(c, a); nn.crossVectors(e1, e2);
+          if (want && nn.dot(want) < 0) { let t = b; b = c; c = t; t = ub; ub = uc; uc = t; }
+          for (const [p, u] of [[a, ua], [b, ub], [c, uc]]) { pos.push(p.x, p.y, p.z); col.push(color.r, color.g, color.b); uv.push(u[0], u[1]); }
+        },
+        quad(a, b, c, d, color, want, u) {
+          u = u || [[0, 0], [0, 0], [0, 0], [0, 0]];
+          B.tri(a, b, c, color, want, u[0], u[1], u[2]); B.tri(a, c, d, color, want, u[0], u[2], u[3]);
+        },
+        // bloc à 8 sommets (4 en bas, 4 en haut)
+        hexa(v, color, bottom = false) {
+          ct.set(0, 0, 0); for (const p of v) ct.add(p); ct.multiplyScalar(1 / 8);
+          const faces = [[4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
+          if (bottom) faces.push([0, 1, 2, 3]);
+          for (const f of faces) { fc.set(0, 0, 0); for (const k of f) fc.add(v[k]); fc.multiplyScalar(0.25).sub(ct); B.quad(v[f[0]], v[f[1]], v[f[2]], v[f[3]], color, fc.clone()); }
+        },
+        geo() { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals(); return g; }
+      };
+      return B;
+    }
+    const buf = { stone: mkBuf(), render: mkBuf(), plain: mkBuf(), roof: mkBuf(), glass: mkBuf(), lit: mkBuf(), flag: mkBuf() };
+
+    // textures : appareil de pierre de Caen, enduit, rangs de tuiles ou d'ardoises, pavés de granit (256 px = 4 m)
+    const stoneTex = canvasTex(256, (g, s) => {
+      g.fillStyle = '#efe3c6'; g.fillRect(0, 0, s, s);
+      for (let y = 0; y < s; y += 21) {
+        let x = -((y / 21) % 2) * 20;
+        while (x < s) { const w = 30 + rnd() * 30, l = 225 + rnd() * 25; g.fillStyle = `rgb(${l},${l - 12},${l - 38})`; g.fillRect(x + 1, y + 1, w - 2, 19); x += w; }
+      }
+      noise(g, 4000, s, ['rgba(120,100,60,0.12)', 'rgba(255,255,255,0.18)'], 1.4);
+    });
+    const renderTex = canvasTex(128, (g, s) => { g.fillStyle = '#f4f0e8'; g.fillRect(0, 0, s, s); noise(g, 2500, s, ['rgba(120,110,90,0.08)', 'rgba(255,255,255,0.25)'], 1.6); });
+    const roofTex = canvasTex(256, (g, s) => {
+      g.fillStyle = '#e6e6e6'; g.fillRect(0, 0, s, s);
+      for (let y = 0; y < s; y += 10) { const off = (y / 10) % 2 ? 7 : 0; for (let x = -off; x < s; x += 14) { const l = 200 + rnd() * 50; g.fillStyle = `rgb(${l},${l},${l})`; g.fillRect(x + 1, y + 1, 13, 8); } g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(0, y + 9, s, 1); }
+    });
+    const settsTex = canvasTex(256, (g, s) => {
+      g.fillStyle = '#7d7d7a'; g.fillRect(0, 0, s, s);
+      for (let y = 0; y < s; y += 12) { const off = (y / 12) % 2 ? 9 : 0; for (let x = -off; x < s; x += 18) { const l = 140 + rnd() * 50; g.fillStyle = `rgb(${l},${l},${l - 4})`; g.fillRect(x + 1, y + 1, 16, 10); } }
+    });
+    for (const t of [stoneTex, renderTex, roofTex]) t.repeat.set(1, 1);
+
+    // ---- toutes les maisons de l'îlot ----
+    const shopsLeft = VAUG_SHOPS.slice();
+    const roofBuf = buf.roof, plain = buf.plain;
+    const SLATE = C(0x4d5662), TILE = C(0x86503c), WHITE = C(0xf4f1ea), DARKWOOD = C(0x3a2a1e);
+    const SHUT = [0x6d7f8c, 0x8b9298, 0xe9e4d8, 0x5f6e5a, 0x7b3a34].map(C);
+    const lanterns = [], chimneys = [];
+    // empreinte : centre, axe principal, longueur et largeur (pour le faîtage)
+    function obb(r) {
+      let cx = 0, cz = 0; for (const p of r) { cx += p[0]; cz += p[1]; } cx /= r.length; cz /= r.length;
+      let best = null;
+      for (let i = 0; i < r.length; i++) {
+        const a = r[i], b = r[(i + 1) % r.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.5) continue;
+        const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+        let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
+        for (const p of r) { const u = (p[0] - cx) * ux + (p[1] - cz) * uz, v = -(p[0] - cx) * uz + (p[1] - cz) * ux; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+        const A = (u1 - u0) * (v1 - v0);
+        if (!best || A < best.A) best = { A, ux, uz, u0, u1, v0, v1 };
+      }
+      let { ux, uz, u0, u1, v0, v1 } = best;
+      if (v1 - v0 > u1 - u0) { const t = ux; ux = -uz; uz = t; [u0, u1, v0, v1] = [v0, v1, -u1, -u0]; }
+      return { cx, cz, ux, uz, u0, u1, v0, v1 };
+    }
+
+    list.forEach((b, bi) => {
+      const ring = pairs(simplifyFlat(b[6]));
+      if (ring.length < 3) return;
+      const [bx, bz] = cen(b);
+      // enseigne la plus proche (une par maison)
+      let shop = null, sd = 1e9;
+      for (const s of shopsLeft) { const d = Math.hypot(s.x - bx, s.z - bz); const inside = pip(s.x, s.z, ring); if ((inside || d < 6) && d < sd) { sd = d; shop = s; } }
+      if (shop) shopsLeft.splice(shopsLeft.indexOf(shop), 1);
+      const hz = hashI(bi, 101);
+      const type = shop ? shop.type : hz < 0.62 ? 'stone' : hz < 0.86 ? 'render' : 'timber';
+      const levels = Math.max(2, Math.min(5, Math.round((b[0] - 1.2) / 3.1)));
+      const fh = type === 'timber' ? 2.75 : 3.05, wallTop = 0.4 + levels * fh;
+      const stoneC = C([0xf1e3c2, 0xeadcbc, 0xf3e8cf, 0xe6d6b2][bi % 4]).multiplyScalar(0.96 + 0.06 * hashI(bi, 7));
+      const renderC = C(shop && shop.render ? shop.render : [0xf1ebdf, 0xece0c8, 0xe9e2d6, 0xf3e6cc][bi % 4]);
+      const infillC = C(shop && shop.infill ? shop.infill : 0xefe4cc), beamC = C(shop && shop.beam ? shop.beam : [0x5a3a24, 0x4a3326, 0x6b4a32][bi % 3]);
+      const wallBuf = type === 'stone' ? buf.stone : buf.render;
+      const wallC = type === 'stone' ? stoneC : type === 'render' ? renderC : infillC;
+      const roofKind = shop && shop.roof ? shop.roof : hashI(bi, 9) < 0.14 ? 'tile' : 'slate'; // l'ardoise domine, quelques toits de tuile brune
+      const roofC = (roofKind === 'tile' ? TILE : SLATE).clone().multiplyScalar(0.9 + 0.2 * hashI(bi, 3));
+      const { cols, E } = ringCols(ring);
+      // murs
+      for (const e of E) {
+        const n = V(e.nx, 0, e.nz);
+        wallBuf.quad(V(e.a[0], 0, e.a[1]), V(e.b[0], 0, e.b[1]), V(e.b[0], wallTop, e.b[1]), V(e.a[0], wallTop, e.a[1]), wallC, n,
+          [[0, 0], [e.L / 4, 0], [e.L / 4, wallTop / 4], [0, wallTop / 4]]);
+      }
+      // façades sur rue : celles dont la normale regarde la rue toute proche
+      let mainEdge = null;
+      const facing = E.filter(e => {
+        const mx = (e.a[0] + e.b[0]) / 2, mz = (e.a[1] + e.b[1]) / 2, d0 = dStreet(mx, mz);
+        const ok = e.L > 2.2 && d0 < 9 && dStreet(mx + e.nx * 3, mz + e.nz * 3) < d0 - 1.2;
+        if (ok && (!mainEdge || e.L > mainEdge.L)) mainEdge = e;
+        return ok;
+      });
+      for (const e of facing) {
+        const F = (t, y, o = 0) => V(e.a[0] + e.ux * t + e.nx * o, y, e.a[1] + e.uz * t + e.nz * o);
+        const n = V(e.nx, 0, e.nz);
+        const box = (t0, t1, y0, y1, o0, o1, c) => buf.plain.hexa([F(t0, y0, o0), F(t1, y0, o0), F(t1, y0, o1), F(t0, y0, o1), F(t0, y1, o0), F(t1, y1, o0), F(t1, y1, o1), F(t0, y1, o1)], c);
+        const beam = (t0, y0, t1, y1, w, c) => { // poutre dans le plan de la façade, d'un point à un autre
+          const dt = t1 - t0, dy = y1 - y0, L = Math.hypot(dt, dy) || 1, pt = -dy / L * w / 2, py = dt / L * w / 2;
+          const P = (t, y, o) => F(t, y, o);
+          buf.plain.hexa([P(t0 - pt, y0 - py, 0.02), P(t0 + pt, y0 + py, 0.02), P(t0 + pt, y0 + py, 0.1), P(t0 - pt, y0 - py, 0.1), P(t1 - pt, y1 - py, 0.02), P(t1 + pt, y1 + py, 0.02), P(t1 + pt, y1 + py, 0.1), P(t1 - pt, y1 - py, 0.1)].map((p, i) => p), c);
+        };
+        const nb = Math.max(1, Math.round(e.L / (type === 'timber' ? 2.2 : 2.6)));
+        const bw = e.L / nb;
+        const isShop = shop && e === mainEdge;
+        // rez-de-chaussée
+        if (isShop) {
+          const sc = C(shop.shop), y1 = fh * 0.95 + 0.4;
+          box(0.15, e.L - 0.15, 0, y1, 0, 0.12, sc);                                 // devanture de bois peint
+          for (let k = 0; k < nb; k++) {
+            const t0 = k * bw + 0.35, t1 = (k + 1) * bw - 0.35;
+            // vitrine : sombre le jour, éclairée le soir
+            buf.lit.quad(F(t0, 0.5, 0.13), F(t1, 0.5, 0.13), F(t1, y1 - 0.55, 0.13), F(t0, y1 - 0.55, 0.13), C(0x2c333b), n);
+          }
+          // store en toile, incliné, avec lambrequin
+          const aw = C(shop.shop).lerp(C(0xffffff), 0.1);
+          const A0 = F(0.1, y1 + 0.35, 0.1), A1 = F(e.L - 0.1, y1 + 0.35, 0.1), B1 = F(e.L - 0.1, y1 - 0.35, 1.6), B0 = F(0.1, y1 - 0.35, 1.6);
+          buf.plain.quad(A0, A1, B1, B0, aw, V(e.nx, 1.5, e.nz));
+          buf.plain.quad(A0, A1, B1, B0, aw.clone().multiplyScalar(0.7), V(-e.nx, -1.5, -e.nz));
+          buf.plain.quad(B0, B1, F(e.L - 0.1, y1 - 0.75, 1.6), F(0.1, y1 - 0.75, 1.6), aw.clone().multiplyScalar(0.92), n);
+          box(0.6, Math.min(e.L - 0.6, 0.6 + shop.name.length * 0.28), y1 + 0.45, y1 + 0.95, 0.1, 0.18, C(0x1e1e1e)); // bandeau d'enseigne
+          signs.push({ e, t: 0.6, y: y1 + 0.45, w: Math.min(e.L - 1.2, shop.name.length * 0.28), name: shop.name });
+        } else {
+          for (let k = 0; k < nb; k++) {
+            const tc = (k + 0.5) * bw;
+            if (k === Math.floor(nb / 2)) { box(tc - 0.55, tc + 0.55, 0, 2.3, 0.01, 0.07, DARKWOOD); box(tc - 0.7, tc + 0.7, 2.3, 2.5, 0, 0.12, WHITE); }
+            else win(F, n, tc, 0.95, 0.9, 1.45, type, box, bi * 31 + k);
+          }
+        }
+        // étages
+        for (let f = 1; f < levels; f++) {
+          const y0 = 0.4 + f * fh;
+          if (type === 'stone') box(0, e.L, y0 - 0.12, y0 + 0.02, 0, 0.08, stoneC.clone().multiplyScalar(1.05)); // bandeau d'étage
+          for (let k = 0; k < nb; k++) win(F, n, (k + 0.5) * bw, y0 + (type === 'timber' ? 0.65 : 0.85), type === 'timber' ? 0.85 : 0.95, type === 'timber' ? 1.15 : 1.5, type, box, bi * 31 + f * 7 + k);
+        }
+        // pans de bois : sablières, poteaux, croix de Saint-André sous les fenêtres
+        if (type === 'timber') {
+          for (let f = 1; f <= levels; f++) beam(0, 0.4 + f * fh - 0.05, e.L, 0.4 + f * fh - 0.05, 0.22, beamC);
+          for (let f = 1; f < levels; f++) {
+            const y0 = 0.4 + f * fh;
+            for (let k = 0; k <= nb; k++) beam(k * bw, y0, k * bw, y0 + fh, 0.2, beamC);
+            for (let k = 0; k < nb; k++) {
+              const t0 = k * bw, t1 = (k + 1) * bw, tc = (t0 + t1) / 2;
+              beam(tc - 0.55, y0, tc - 0.55, y0 + fh, 0.14, beamC); beam(tc + 0.55, y0, tc + 0.55, y0 + fh, 0.14, beamC);
+              beam(t0 + 0.1, y0 + 0.05, tc - 0.55, y0 + 0.62, 0.12, beamC); beam(t1 - 0.1, y0 + 0.05, tc + 0.55, y0 + 0.62, 0.12, beamC);
+            }
+          }
+        }
+        // lanterne murale en fonte
+        if (e.L > 5 && hashI(bi, 55) < 0.55) lanterns.push(F(e.L * 0.5 + (nb > 1 ? bw / 2 : 0), wallTop - fh + 0.4, 0.55));
+      }
+
+      // toiture : pignons raides si le plan s'y prête, croupes sinon
+      const o = obb(ring), Lr = o.u1 - o.u0, Wr = o.v1 - o.v0;
+      const P = (u, v, y) => V(o.cx + o.ux * u - o.uz * v, y, o.cz + o.uz * u + o.ux * v);
+      const fill = Math.abs(signed(ring)) / 2 / (Lr * Wr);
+      const pitch = roofKind === 'tile' || type === 'timber' ? 1.25 : 1.05;
+      if (fill > 0.72 && Wr < 13) {
+        const hw = Wr / 2 + 0.3, vm = (o.v0 + o.v1) / 2, ridge = wallTop + hw * pitch, ex = 0.3;
+        const a0 = o.u0 - ex, a1 = o.u1 + ex;
+        const L1 = P(a0, vm - hw, wallTop), L2 = P(a1, vm - hw, wallTop), R1 = P(a0, vm + hw, wallTop), R2 = P(a1, vm + hw, wallTop), K1 = P(a0, vm, ridge), K2 = P(a1, vm, ridge);
+        const s = Math.hypot(hw, ridge - wallTop);
+        const uvS = [[0, 0], [(a1 - a0) / 4, 0], [(a1 - a0) / 4, s / 4], [0, s / 4]];
+        roofBuf.quad(L1, L2, K2, K1, roofC, V(o.uz, 1, -o.ux), uvS);
+        roofBuf.quad(R1, R2, K2, K1, roofC, V(-o.uz, 1, o.ux), uvS);
+        // pignons
+        const gc = type === 'stone' ? stoneC : type === 'render' ? renderC : infillC, gb = type === 'stone' ? buf.stone : buf.render;
+        for (const [A, B2, K, dirU] of [[P(o.u0, vm - hw + 0.3, wallTop), P(o.u0, vm + hw - 0.3, wallTop), P(o.u0, vm, ridge - 0.35), -1], [P(o.u1, vm - hw + 0.3, wallTop), P(o.u1, vm + hw - 0.3, wallTop), P(o.u1, vm, ridge - 0.35), 1]]) {
+          gb.tri(A, B2, K, gc, V(o.ux * dirU, 0, o.uz * dirU), [0, 0], [Wr / 4, 0], [Wr / 8, (ridge - wallTop) / 4]);
+          gb.tri(A, B2, K, gc, V(-o.ux * dirU, 0, -o.uz * dirU), [0, 0], [Wr / 4, 0], [Wr / 8, (ridge - wallTop) / 4]);
+          if (type === 'timber') { // pignon à pans de bois
+            const mid = A.clone().lerp(B2, 0.5);
+            for (const [p, q] of [[A, K], [B2, K], [mid, K], [A.clone().lerp(K, 0.45), B2.clone().lerp(K, 0.45)]]) {
+              const d = q.clone().sub(p), side = V(o.ux * dirU * 0.08, 0, o.uz * dirU * 0.08), w = d.clone().cross(V(o.ux, 0, o.uz)).normalize().multiplyScalar(0.09);
+              buf.plain.hexa([p.clone().sub(w), p.clone().add(w), p.clone().add(w).add(side), p.clone().sub(w).add(side), q.clone().sub(w), q.clone().add(w), q.clone().add(w).add(side), q.clone().sub(w).add(side)], beamC);
+            }
+          }
+        }
+        // souches de cheminée en pierre sur le faîtage, avec mitrons de terre cuite
+        for (const u of hashI(bi, 21) < 0.5 ? [o.u0 + 0.7] : [o.u0 + 0.7, o.u1 - 0.7]) {
+          const c = P(u, vm + (hashI(bi, 22) - 0.5) * hw * 0.6, 0), top = ridge + 1.3 + hashI(bi, 23) * 0.8;
+          chimneys.push([c.x, c.z, wallTop, top, Math.atan2(o.uz, o.ux)]);
+        }
+        // lucarnes côté rue pour les maisons de pierre
+        if (type !== 'timber' && mainEdge && Lr > 5) {
+          const side = (mainEdge.nx * -o.uz + mainEdge.nz * o.ux) > 0 ? 1 : -1;
+          const nd = Math.max(1, Math.floor(Lr / 3.2));
+          for (let k = 0; k < nd; k++) {
+            const u = o.u0 + (k + 0.5) * Lr / nd, v = vm + side * hw * 0.55, yb = wallTop + hw * 0.45 * pitch - 0.5;
+            const Q = (du, dv, y) => P(u + du, v + dv * side, y);
+            buf.render.hexa([Q(-0.6, 0, yb), Q(0.6, 0, yb), Q(0.6, -1.4, yb), Q(-0.6, -1.4, yb), Q(-0.6, 0, yb + 1.5), Q(0.6, 0, yb + 1.5), Q(0.6, -1.4, yb + 1.5), Q(-0.6, -1.4, yb + 1.5)], WHITE);
+            buf.glass.quad(Q(-0.38, 0.02, yb + 0.2), Q(0.38, 0.02, yb + 0.2), Q(0.38, 0.02, yb + 1.3), Q(-0.38, 0.02, yb + 1.3), C(0x2c333b), V(-o.uz * side, 0, o.ux * side));
+            roofBuf.tri(Q(-0.72, 0.1, yb + 1.5), Q(0.72, 0.1, yb + 1.5), Q(0, 0.1, yb + 2.15), roofC, null);
+            roofBuf.quad(Q(-0.72, 0.1, yb + 1.5), Q(0, 0.1, yb + 2.15), Q(0, -1.5, yb + 2.15), Q(-0.72, -1.5, yb + 1.5), roofC, null);
+            roofBuf.quad(Q(0.72, 0.1, yb + 1.5), Q(0, 0.1, yb + 2.15), Q(0, -1.5, yb + 2.15), Q(0.72, -1.5, yb + 1.5), roofC, null);
+          }
+        }
+      } else {
+        // plan irrégulier : toit à croupes raides
+        const sg = signed(ring) > 0 ? 1 : -1;
+        let d = Math.min(4.5, Wr * 0.42), ins = null, rr = ring;
+        for (const cand of [ring, rdpRing(ring, 1.0), rdpRing(ring, 2.0)]) {
+          const sgc = signed(cand) > 0 ? 1 : -1;
+          for (let k = 0, dd = d; k < 6 && !ins && dd > 0.7; k++, dd *= 0.75) { ins = offsetRing(cand, dd, sgc); if (ins) { d = dd; rr = cand; } }
+          if (ins) break;
+        }
+        const RE = ringCols(rr).E;
+        const rise = (ins ? d : 0) * pitch, yt = wallTop + rise;
+        if (ins) {
+          if (rr !== ring) { const fr = []; for (const p of ring) fr.push(p[0], p[1]); for (const t of triangulate([fr])) roofBuf.tri(V(t[0].x, wallTop - 0.02, t[0].y), V(t[1].x, wallTop - 0.02, t[1].y), V(t[2].x, wallTop - 0.02, t[2].y), roofC, V(0, 1, 0)); }
+          for (let i = 0; i < rr.length; i++) {
+            const j = (i + 1) % rr.length, e = RE[i];
+            roofBuf.quad(V(rr[i][0], wallTop, rr[i][1]), V(rr[j][0], wallTop, rr[j][1]), V(ins[j][0], yt, ins[j][1]), V(ins[i][0], yt, ins[i][1]), roofC, V(e.nx * rise, d, e.nz * rise), [[0, 0], [e.L / 4, 0], [e.L / 4, 1.3], [0, 1.3]]);
+          }
+          const fi = []; for (const p of ins) fi.push(p[0], p[1]);
+          for (const t of triangulate([fi])) roofBuf.tri(V(t[0].x, yt, t[0].y), V(t[1].x, yt, t[1].y), V(t[2].x, yt, t[2].y), roofC, V(0, 1, 0));
+        } else {
+          const fr = []; for (const p of ring) fr.push(p[0], p[1]);
+          for (const t of triangulate([fr])) roofBuf.tri(V(t[0].x, wallTop, t[0].y), V(t[1].x, wallTop, t[1].y), V(t[2].x, wallTop, t[2].y), C(0x5c646e), V(0, 1, 0));
+        }
+        chimneys.push([o.cx, o.cz, wallTop, yt + 1.4, Math.atan2(o.uz, o.ux)]);
+      }
+    });
+
+    // fenêtre : vitrage à petits bois, encadrement, appui ; volets sur la pierre et l'enduit
+    function win(F, n, tc, yb, w, h, type, box, seed) {
+      const t0 = tc - w / 2, t1 = tc + w / 2;
+      const litW = hashI(seed, 5) < 0.3;
+      (litW ? buf.lit : buf.glass).quad(F(t0, yb, 0.015), F(t1, yb, 0.015), F(t1, yb + h, 0.015), F(t0, yb + h, 0.015), C(0x2f3740), n);
+      const fc = type === 'timber' ? C(0xe9e2d2) : WHITE;
+      box(t0 - 0.09, t0, yb - 0.05, yb + h + 0.05, 0, 0.07, fc); box(t1, t1 + 0.09, yb - 0.05, yb + h + 0.05, 0, 0.07, fc);
+      box(t0 - 0.09, t1 + 0.09, yb + h, yb + h + 0.1, 0, 0.07, fc);
+      box(tc - 0.025, tc + 0.025, yb, yb + h, 0.01, 0.05, fc);
+      for (let k = 1; k < 3; k++) box(t0, t1, yb + h * k / 3 - 0.02, yb + h * k / 3 + 0.02, 0.01, 0.05, fc);
+      box(t0 - 0.15, t1 + 0.15, yb - 0.12, yb, 0, 0.16, type === 'stone' ? C(0xf3ead6) : WHITE); // appui
+      if (type !== 'timber' && hashI(seed, 8) < 0.7) {
+        const sc = SHUT[Math.floor(hashI(seed >> 2, 9) * SHUT.length)];
+        box(t0 - 0.12 - w / 2, t0 - 0.1, yb, yb + h, 0.02, 0.09, sc); box(t1 + 0.1, t1 + 0.12 + w / 2, yb, yb + h, 0.02, 0.09, sc);
+      }
+    }
+
+    // ---- la rue : pavés de granit, terrasses, fanions, lanternes ----
+    const g = new THREE.Group();
+    const settsRibbon = new THREE.Mesh(ribbonGeo(street.map(p => ({ f: p.flat(), w: 7 })), 0.06, i => i.w, 0, 4), lam({ map: settsTex }));
+    scene.add(layer(settsRibbon, 7.2));
+    // terrasses : tables, chaises et parasols blancs dans la rue et sur la placette
+    const spots = [];
+    for (const p of street) for (let i = 0; i < p.length - 1; i++) {
+      const L = Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]);
+      for (let t = 1.5; t < L; t += 3.2) {
+        const x = p[i][0] + (p[i + 1][0] - p[i][0]) * t / L, z = p[i][1] + (p[i + 1][1] - p[i][1]) * t / L;
+        if (x < VAUG.x0 || x > VAUG.x1 || z < VAUG.z0 || z > VAUG.z1) continue;
+        for (const side of [-1.6, 1.6]) {
+          const ux = (p[i + 1][0] - p[i][0]) / L, uz = (p[i + 1][1] - p[i][1]) / L, px = x - uz * side, pz = z + ux * side;
+          if (hashI(Math.round(px * 10), Math.round(pz * 10)) < 0.55 && !list.some(b => pip(px, pz, pairs(b[6])))) spots.push([px, pz]);
+        }
+      }
+    }
+    const m4 = new THREE.Matrix4();
+    const tableGeo = mergeColored([
+      [T(new THREE.CylinderGeometry(0.38, 0.38, 0.04, 12), 0, 0.74, 0), [0.92, 0.92, 0.9]], [T(new THREE.CylinderGeometry(0.03, 0.05, 0.74, 6), 0, 0.37, 0), [0.15, 0.15, 0.15]],
+      [T(new THREE.BoxGeometry(0.42, 0.45, 0.42), 0.7, 0.23, 0), [0.32, 0.22, 0.15]], [T(new THREE.BoxGeometry(0.42, 0.45, 0.42), -0.7, 0.23, 0), [0.32, 0.22, 0.15]],
+      [T(new THREE.BoxGeometry(0.42, 0.42, 0.05), 0.7, 0.66, 0.2), [0.32, 0.22, 0.15]], [T(new THREE.BoxGeometry(0.42, 0.42, 0.05), -0.7, 0.66, -0.2), [0.32, 0.22, 0.15]]]);
+    const tables = new THREE.InstancedMesh(tableGeo, lam({ vertexColors: true }), Math.max(1, spots.length));
+    const paraGeo = mergeColored([[T(new THREE.ConeGeometry(1.25, 0.45, 8), 0, 2.35, 0), [0.96, 0.95, 0.92]], [T(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 5), 0, 1.1, 0), [0.4, 0.4, 0.4]]]);
+    const paras = new THREE.InstancedMesh(paraGeo, lam({ vertexColors: true }), Math.max(1, spots.length));
+    let np = 0;
+    spots.forEach(([x, z], i) => { m4.makeRotationY(i * 1.3).setPosition(x, 0.06, z); tables.setMatrixAt(i, m4); if (i % 2 === 0) paras.setMatrixAt(np++, m4); });
+    tables.count = spots.length; paras.count = np;
+    for (const o of [tables, paras]) { o.castShadow = o.receiveShadow = true; g.add(o); }
+    // guirlandes de fanions tendues d'une façade à l'autre
+    const FLAG = [0xc8323c, 0xf2c230, 0x2f5d9c, 0xf6f3ec, 0x3c8a4a].map(C);
+    let fi = 0;
+    for (const p of street) for (let i = 0; i < p.length - 1; i++) {
+      const L = Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]), ux = (p[i + 1][0] - p[i][0]) / L, uz = (p[i + 1][1] - p[i][1]) / L;
+      for (let t = 4; t < L; t += 9) {
+        const x = p[i][0] + ux * t, z = p[i][1] + uz * t;
+        if (x < VAUG.x0 || x > VAUG.x1 || z < VAUG.z0 || z > VAUG.z1) continue;
+        for (let k = -7; k < 7; k++) {
+          const s0 = k * 0.5, sag = 6.6 - 0.35 * (1 - (s0 / 3.5) ** 2), A = V(x - uz * s0, sag, z + ux * s0), B2 = V(x - uz * (s0 + 0.4), sag, z + ux * (s0 + 0.4)), Cc = V(x - uz * (s0 + 0.2), sag - 0.45, z + ux * (s0 + 0.2));
+          buf.flag.tri(A, B2, Cc, FLAG[fi++ % FLAG.length], null);
+        }
+      }
+    }
+    // lanternes : potence noire et lanterne vitrée, allumées le soir
+    const lanternMat = lam({ color: 0x2a2c30, emissive: 0xffc070, emissiveIntensity: 0 });
+    const lanGeo = mergeColored([[T(new THREE.BoxGeometry(0.06, 0.06, 0.55), 0, 0.35, -0.28), [1, 1, 1]], [T(new THREE.CylinderGeometry(0.2, 0.14, 0.45, 6), 0, 0.1, 0), [1, 1, 1]], [T(new THREE.ConeGeometry(0.24, 0.2, 6), 0, 0.42, 0), [0.2, 0.2, 0.2]]]);
+    const lans = new THREE.InstancedMesh(lanGeo, lanternMat, Math.max(1, lanterns.length));
+    lanterns.forEach((p, i) => lans.setMatrixAt(i, m4.makeTranslation(p.x, p.y, p.z)));
+    lans.count = lanterns.length; g.add(lans);
+    // souches de cheminée
+    for (const [x, z, y0, y1, a] of chimneys) {
+      const c = Math.cos(a), s = Math.sin(a), Pq = (du, dv, y) => V(x + c * du - s * dv, y, z + s * du + c * dv);
+      buf.stone.hexa([Pq(-0.45, -0.32, y0), Pq(0.45, -0.32, y0), Pq(0.45, 0.32, y0), Pq(-0.45, 0.32, y0), Pq(-0.45, -0.32, y1), Pq(0.45, -0.32, y1), Pq(0.45, 0.32, y1), Pq(-0.45, 0.32, y1)], C(0xe6d6b2));
+      buf.plain.hexa([Pq(-0.52, -0.38, y1), Pq(0.52, -0.38, y1), Pq(0.52, 0.38, y1), Pq(-0.52, 0.38, y1), Pq(-0.52, -0.38, y1 + 0.15), Pq(0.52, -0.38, y1 + 0.15), Pq(0.52, 0.38, y1 + 0.15), Pq(-0.52, 0.38, y1 + 0.15)], C(0xd9ccb0));
+      for (const du of [-0.22, 0.22]) buf.plain.hexa([Pq(du - 0.09, -0.09, y1 + 0.15), Pq(du + 0.09, -0.09, y1 + 0.15), Pq(du + 0.09, 0.09, y1 + 0.15), Pq(du - 0.09, 0.09, y1 + 0.15), Pq(du - 0.08, -0.08, y1 + 0.5), Pq(du + 0.08, -0.08, y1 + 0.5), Pq(du + 0.08, 0.08, y1 + 0.5), Pq(du - 0.08, 0.08, y1 + 0.5)], C(0xb0603e));
+    }
+
+    // enseignes peintes sur les bandeaux
+    for (const s of signs) {
+      const cnv = document.createElement('canvas'); cnv.width = 512; cnv.height = 64;
+      const c2 = cnv.getContext('2d'); c2.fillStyle = '#1e1e1e'; c2.fillRect(0, 0, 512, 64);
+      c2.fillStyle = '#f1e6c8'; c2.font = 'italic 600 40px "Playfair Display", Georgia, serif'; c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText(s.name, 256, 34);
+      const tex = new THREE.CanvasTexture(cnv); tex.anisotropy = ANISO;
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(s.w, 0.5), new THREE.MeshLambertMaterial({ map: tex }));
+      const e = s.e;
+      pl.position.set(e.a[0] + e.ux * (s.t + s.w / 2) + e.nx * 0.185, s.y + 0.25, e.a[1] + e.uz * (s.t + s.w / 2) + e.nz * 0.185);
+      pl.rotation.y = Math.atan2(e.nx, e.nz);
+      g.add(pl);
+    }
+
+    // matériaux
+    const mats = {
+      stone: lam({ map: stoneTex, vertexColors: true }), render: lam({ map: renderTex, vertexColors: true }), plain: lam({ vertexColors: true }),
+      roof: lam({ map: roofTex, vertexColors: true, side: THREE.DoubleSide }), glass: new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 90, specular: 0x8899aa }),
+      lit: lam({ vertexColors: true, emissive: 0xffc985, emissiveIntensity: 0 }), flag: lam({ vertexColors: true, side: THREE.DoubleSide })
+    };
+    for (const k in buf) { const m = new THREE.Mesh(buf[k].geo(), mats[k]); m.castShadow = k !== 'glass' && k !== 'lit'; m.receiveShadow = true; g.add(m); }
+    hookNight.push([mats.lit, 0.9], [lanternMat, 2.4]);
+    whiteHooks.push(on => {
+      for (const k in mats) { const m = mats[k]; m.vertexColors = !on; m.color.set(on ? 0xf6f4f0 : 0xffffff); if (m.userData.map === undefined) m.userData.map = m.map; m.map = on ? null : m.userData.map; m.needsUpdate = true; }
+    });
+    solids.add(g);
+    return g;
+  }
+  const signs = [];
+
+  // ---------- Tramway de Caen : voies, ligne aérienne, stations ----------
+  // Quais : positions OSM (public_transport=platform) ; voies : chaque voie OSM railway=tram
+  const TRAM_PLATFORMS = [["Université", -62.2, -543.4], ["Université", -60.5, -536.9], ["Place de la Mare", -234.2, -347.8], ["Place de la Mare", -226.6, -338.2], ["Château Quatrans", -59.3, -143.2], ["Château Quatrans", -60.7, -138.9], ["Château Quatrans", -62.4, -133.3], ["Saint-Pierre", 212.7, 29.3], ["Saint-Pierre", 209.5, 24.1], ["Bernières", 377.9, 168.1], ["Bernières", 383.5, 164.6], ["Quai de Juillet", 678.3, 599.7], ["Quai de Juillet", 684.0, 595.6], ["Gare - Rives de l'Orne", 893.2, 616.6], ["Gare - Rives de l'Orne", 897.1, 622.9], ["Presqu'île", 1085.6, 261.1], ["Gare SNCF", 1061.0, 893.4], ["Gare SNCF", 1065.8, 901.2], ["Résistance Saint-Jean", 510.0, 346.5], ["Résistance Saint-Jean", 504.6, 349.6]];
+  let tramStations = []; // [x, z] des quais, pour que les rames y marquent l'arrêt
+
+  function buildTramNetwork(tracks) {
+    const g = new THREE.Group(), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), s3 = new THREE.Vector3(), p3 = new THREE.Vector3();
+    const lines = tracks.map(f => pairs(f)).filter(p => p.length > 1);
+    // plateforme de béton clair et rails d'acier, voie par voie
+    const slabTex = canvasTex(128, (g2, s) => { g2.fillStyle = '#d0cfc9'; g2.fillRect(0, 0, s, s); noise(g2, 1500, s, ['rgba(90,90,85,0.12)', 'rgba(255,255,255,0.2)'], 1.5); g2.fillStyle = 'rgba(80,80,75,0.25)'; g2.fillRect(0, 0, s, 1.5); g2.fillRect(0, 0, 1.5, s); });
+    const L = lines.map(p => ({ f: p.flat() }));
+    scene.add(layer(new THREE.Mesh(ribbonGeo(L, 0.05, () => 3.0, 0, 6), lam({ map: slabTex })), 9));
+    const ra = ribbonGeo(L, 0.05, () => 0.16, 0.72), rb = ribbonGeo(L, 0.05, () => 0.16, -0.72);
+    scene.add(layer(new THREE.Mesh(geo([...ra.attributes.position.array, ...rb.attributes.position.array]), lam({ color: 0x5f6368 })), 10));
+    // poteaux, consoles et fil de contact (un poteau tous les 32 m, du côté extérieur de chaque voie)
+    const poles = [], wire = [];
+    for (const p of lines) {
+      let carry = 16;
+      for (let i = 0; i < p.length - 1; i++) {
+        const [x1, z1] = p[i], [x2, z2] = p[i + 1], Ls = Math.hypot(x2 - x1, z2 - z1); if (Ls < 0.05) continue;
+        const ux = (x2 - x1) / Ls, uz = (z2 - z1) / Ls;
+        wire.push(x1, 5.9, z1, x2, 5.9, z2);
+        let t = carry;
+        for (; t < Ls; t += 32) poles.push([x1 + ux * t - uz * 2.4, z1 + uz * t + ux * 2.4, Math.atan2(uz, ux)]);
+        carry = t - Ls;
+      }
+    }
+    const poleGeo = mergeColored([
+      [T(new THREE.CylinderGeometry(0.1, 0.13, 7.2, 8), 0, 3.6, 0), [1, 1, 1]],
+      [T(new THREE.BoxGeometry(0.07, 0.07, 2.6), 0, 6.45, -1.2), [1, 1, 1]],
+      [T(new THREE.BoxGeometry(0.05, 0.6, 0.05), 0, 6.1, -2.35), [1, 1, 1]]]);
+    const poleMesh = new THREE.InstancedMesh(poleGeo, lam({ color: 0x8d9297 }), Math.max(1, poles.length));
+    poles.forEach(([x, z, a], i) => poleMesh.setMatrixAt(i, m4.makeRotationY(-a).setPosition(x, 0, z)));
+    poleMesh.castShadow = true; g.add(poleMesh);
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
+    g.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x2a2d31, transparent: true, opacity: 0.75 })));
+
+    // stations : quai, bordure blanche, abri à auvent blanc, vitrage, banc, plan, totem
+    const nearestTrack = (x, z) => {
+      let best = null;
+      for (const p of lines) for (let i = 0; i < p.length - 1; i++) {
+        const a = p[i], b = p[i + 1], dx = b[0] - a[0], dz = b[1] - a[1], LL = dx * dx + dz * dz || 1;
+        const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / LL)), px = a[0] + dx * t, pz = a[1] + dz * t, d = Math.hypot(x - px, z - pz);
+        if (!best || d < best.d) { const l = Math.sqrt(LL); best = { d, px, pz, ux: dx / l, uz: dz / l }; }
+      }
+      return best;
+    };
+    const quaiM = lam({ color: 0xd8d6d0 }), edgeM = lam({ color: 0xf6f6f2 }), whiteM = lam({ color: 0xf4f5f6 }), greyM = lam({ color: 0x5c6167 }), darkM = lam({ color: 0x2b2f34 }), woodM = lam({ color: 0x7a5a3c });
+    const glassM = new THREE.MeshLambertMaterial({ color: 0xcfe0ea, transparent: true, opacity: 0.3, depthWrite: false });
+    const mapM = lam({ color: 0x2b2f34, emissive: 0xfff2dc, emissiveIntensity: 0 });
+    nightMats.push([mapM, 0.5]);
+    const add = (geo, mat, x, y, z, ry, parent = g) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.rotation.y = ry; o.castShadow = o.receiveShadow = mat !== glassM; parent.add(o); return o; };
+    const signTex = {};
+    const nameTex = (name) => signTex[name] || (signTex[name] = (() => {
+      const c = document.createElement('canvas'); c.width = 512; c.height = 96; const x = c.getContext('2d');
+      x.fillStyle = '#2b2f34'; x.fillRect(0, 0, 512, 96);
+      x.fillStyle = '#9aa0a6'; x.fillRect(0, 0, 10, 96);
+      // pictogramme tram : cercle blanc et silhouette de rame
+      x.fillStyle = '#fff'; x.beginPath(); x.arc(62, 48, 30, 0, Math.PI * 2); x.fill();
+      x.fillStyle = '#2b2f34'; x.fillRect(46, 34, 32, 22); x.fillRect(58, 24, 8, 8); x.fillRect(48, 58, 6, 6); x.fillRect(70, 58, 6, 6);
+      x.fillStyle = '#fff'; x.font = '700 40px Archivo, Arial, sans-serif'; x.textBaseline = 'middle'; x.fillText(name, 108, 50, 390);
+      const t = new THREE.CanvasTexture(c); t.anisotropy = ANISO; return t;
+    })());
+    tramStations = [];
+    for (const [name, cx, cz] of TRAM_PLATFORMS) {
+      const tr = nearestTrack(cx, cz); if (!tr || tr.d > 9) continue;
+      tramStations.push([cx, cz]);
+      // côté du quai par rapport à la voie, distance ramenée à la valeur réelle (1,5 m d'axe + quai)
+      let nx = -tr.uz, nz = tr.ux; if ((cx - tr.px) * nx + (cz - tr.pz) * nz < 0) { nx = -nx; nz = -nz; }
+      const ox = tr.px + nx * 2.9, oz = tr.pz + nz * 2.9, ry = -Math.atan2(tr.uz, tr.ux);
+      const F = (du, dn) => [ox + tr.ux * du + nx * dn, oz + tr.uz * du + nz * dn];
+      const st = new THREE.Group(); g.add(st);
+      add(new THREE.BoxGeometry(32, 0.26, 2.8), quaiM, ox, 0.13, oz, ry, st);
+      let [x, z] = F(0, -1.33); add(new THREE.BoxGeometry(32, 0.27, 0.16), edgeM, x, 0.135, z, ry, st);
+      // abri : deux poteaux, auvent légèrement incliné, paroi vitrée au dos, banc
+      for (const du of [-3.2, 3.2]) { [x, z] = F(du, 0.95); add(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), greyM, x, 1.56, z, 0, st); }
+      [x, z] = F(0, 0.35);
+      const roof = add(new THREE.BoxGeometry(7.4, 0.08, 2.1), whiteM, x, 2.92, z, ry, st);
+      roof.rotation.order = 'YXZ'; roof.rotation.x = 0.07;
+      [x, z] = F(0, 1.05); add(new THREE.BoxGeometry(6.6, 2.3, 0.04), glassM, x, 1.45, z, ry, st);
+      [x, z] = F(0, 0.75); add(new THREE.BoxGeometry(3.2, 0.08, 0.45), woodM, x, 0.72, z, ry, st);
+      [x, z] = F(-3.6, 1.0); add(new THREE.BoxGeometry(1.0, 1.7, 0.12), mapM, x, 1.2, z, ry, st);
+      // bandeau nominatif sous l'auvent, côté voie
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.6), new THREE.MeshLambertMaterial({ map: nameTex(name), side: THREE.DoubleSide }));
+      [x, z] = F(0, -0.62); sign.position.set(x, 2.55, z); sign.rotation.y = Math.atan2(-nx, -nz); st.add(sign);
+      // totem en bout de quai
+      [x, z] = F(13.5, 0.6); add(new THREE.CylinderGeometry(0.07, 0.07, 3.4, 8), darkM, x, 1.83, z, 0, st);
+      const tot = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.3), new THREE.MeshLambertMaterial({ map: nameTex(name), side: THREE.DoubleSide }));
+      tot.position.set(x, 3.25, z); tot.rotation.y = ry; st.add(tot);
+      // distributeur de titres
+      [x, z] = F(10.5, 0.8); add(new THREE.BoxGeometry(0.6, 1.6, 0.5), greyM, x, 1.06, z, ry, st);
+    }
+    solids.add(g);
+    return g;
   }
 
   // ---------- Post-traitement ----------
@@ -2617,14 +3099,8 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     // sols mouillés sous la pluie : plus sombres
     const wetBase = wetMats.map(m => m.color.clone());
     hourHooks.push(() => wetMats.forEach((m, i) => m.color.copy(wetBase[i]).multiplyScalar(rainOn ? 0.68 : 1)));
-    const tramL = data.tram.map(f => ({ f }));
-    scene.add(layer(new THREE.Mesh(ribbonGeo(tramL, 0.05, () => 3.2), lam({ color: 0xa9ae9a })), 9));
-    const rails = new THREE.Mesh(ribbonGeo(tramL, 0.05, () => 0.22, 0.72), lam({ color: 0x4f5357 }));
-    rails.geometry = (() => {
-      const a = ribbonGeo(tramL, 0.05, () => 0.22, 0.72), b = ribbonGeo(tramL, 0.05, () => 0.22, -0.72);
-      return geo([...a.attributes.position.array, ...b.attributes.position.array]);
-    })();
-    scene.add(layer(rails, 10));
+    // tramway : voies OSM, ligne aérienne et vraies stations
+    buildTramNetwork(data.tram);
     const piers = new THREE.Mesh(barsGeo(data.piers, () => 0.6, 2.4), lam({ color: 0x9a7b5a }));
     piers.receiveShadow = true; solids.add(piers);
 
@@ -2692,8 +3168,13 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
       }
       if (best) { OVR.set(best, m); if (m.extras) monExtras.push([best, m]); }
     }
+    // îlot du Vaugueux : remplacé par une reconstitution maison par maison
+    const vz = vaugueuxZone(data, b => ofCastle(b) || churchB.has(b) || OVR.has(b));
+    const vaugSet = new Set(vz.list);
+    buildVaugueux(vz, nightMats);
+    data.labels.push(['Quartier du Vaugueux', 241, -172, 14]);
     // les grands îlots de la Reconstruction à part : ils disparaissent quand on remonte à l'été 1944
-    const town = data.b.filter(b => !ofCastle(b) && !churchB.has(b));
+    const town = data.b.filter(b => !ofCastle(b) && !churchB.has(b) && !vaugSet.has(b));
     const isReco = (b) => { if (b[1] !== 0 || OVR.has(b)) return false; const r = pairs(b[6]); return Math.abs(signed(r)) / 2 >= (r[0][0] < -150 ? 420 : 220); };
     recoList = town.filter(isReco);
     buildingMesh = buildBuildings(town.filter(b => !isReco(b)));
@@ -2895,6 +3376,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
   document.getElementById('shot-x').addEventListener('click', () => { document.getElementById('shot').hidden = true; });
 
   const TOUR = [
+    ['Quartier du Vaugueux', "Petit quartier ancien au pied du château, en grande partie épargné en 1944 : maisons à pans de bois et de pierre de Caen, rue piétonne pavée bordée de restaurants."],
     ['Château de Caen', "Fondé vers 1060 par Guillaume le Conquérant, c'est l'une des plus vastes enceintes fortifiées d'Europe. Il abrite aujourd'hui le Musée des Beaux-Arts et le Musée de Normandie."],
     ['Maison des Quatrans', "Maison à pans de bois de la fin du Moyen Âge, l'une des plus anciennes de Caen, au pied du château."],
     ['Église Saint-Pierre', "Église gothique des XIIIe–XVIe siècles, au chevet Renaissance sculpté par Hector Sohier. Sa flèche, abattue en 1944, a été reconstruite."],
