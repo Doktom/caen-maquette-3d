@@ -2979,28 +2979,43 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
   // ---------- Presqu'île : architectures récentes, une par une ----------
   // Chaque bâtiment est retrouvé par le centre de son emprise (repère de la maquette) puis construit
   // selon ce que montrent les vues 3D et les photos.
+  // Relevés : vue aérienne verticale calée à 0,21 m/px, vues 3D sous 6 angles, photos (VIB, Ouest-France, Caen la mer)
+  const rectPoly = (cx, cz, a, L, W) => { const ux = Math.cos(a), uz = Math.sin(a); return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i2, j2]) => [cx + ux * L / 2 * i2 - uz * W / 2 * j2, cz + uz * L / 2 * i2 + ux * W / 2 * j2]); };
+  const roundEndPoly = (cx, cz, a, L, W) => { // plan à extrémité arrondie (tour de Quai XIX)
+    const ux = Math.cos(a), uz = Math.sin(a), P = (u, v) => [cx + ux * u - uz * v, cz + uz * u + ux * v], r = W / 2, out = [P(L / 2, -r), P(L / 2, r)];
+    for (let k = 0; k <= 12; k++) { const t = Math.PI / 2 + Math.PI * k / 12; out.push(P(-L / 2 + r + Math.cos(t) * r, Math.sin(t) * r)); }
+    return out;
+  };
   const PRESQ = [
-    { at: [909, 192], kind: 'library', h: 16 },            // Bibliothèque Alexis de Tocqueville (OMA, 2017)
+    { at: [909, 192], kind: 'library', h: 16, patios: [[922, 176], [902, 194], [946, 188], [934, 209, 'green']] }, // Bibliothèque Alexis de Tocqueville (OMA)
     { at: [987, 49], kind: 'tribunal', h: 21 },            // Tribunal judiciaire
     { at: [1165, 253], kind: 'dome', h: 24 },              // Le Dôme (Bruther)
     { at: [1150, 320], kind: 'cargo', h: 14 },             // Le Cargö
-    { at: [939, 291], kind: 'pavillon', h: 8.5 },          // Le Pavillon
-    { at: [996, 281], kind: 'stack', h: 25, tone: 'dark' },  // Cap 360 et l'îlot du quai François Mitterrand
-    { at: [958, 237], kind: 'stack', h: 20, tone: 'dark' },
-    { at: [943, 259], kind: 'stack', h: 17, tone: 'white' },
-    { at: [975, 217], kind: 'stack', h: 17, tone: 'white' },
-    { at: [1064, 162], kind: 'stack', h: 19, tone: 'white', oval: [1035, 165] }, // Quai XIX et sa tour ovale
-    { at: [842, 131], kind: 'flat', h: 19, tone: 'white', roof: 0x6e2a30 },        // immeuble blanc au toit bordeaux
+    { at: [939, 291], kind: 'pavillon', h: 10.5 },         // Le Pavillon : ancien bâtiment portuaire blanc et son extension noire
+    { at: [996, 281], kind: 'balcony', h: 24 },            // Cap 360 : volumes anthracite à balcons
+    { at: [958, 237], kind: 'grid', h: 25 },               // résidence étudiante : béton clair, grille régulière
+    { at: [943, 259], kind: 'balcony', h: 19 },
+    { at: [975, 217], kind: 'balcony', h: 21 },
+    { at: [1064, 162], kind: 'none' },                     // Quai XIX : emprise commune, remplacée par les bâtiments relevés ci-dessous
+    { poly: [[1008.6, 138.2], [1044.4, 118.2], [1065.5, 148.8], [1029.6, 169.8]], kind: 'grid', h: 20 },              // bureaux blancs, rue Dumont d'Urville
+    { poly: [[1057.1, 135.4], [1071.8, 131.2], [1088.7, 152.3], [1086.6, 175.5], [1065.5, 176.6], [1057.1, 162.8]], kind: 'garden', h: 5 }, // jardin sur socle
+    { poly: [[1068.8, 181.8], [1087.7, 178.6], [1102.5, 228.2], [1081.4, 232.4]], kind: 'norway', h: 21, mild: true }, // logements blancs à balcons
+    { poly: [[1000.2, 116.4], [1005.5, 114.3], [1019.2, 143.8], [1013.9, 145.9]], kind: 'flat', h: 7, tone: 'white' },  // rez-de-promenade
+    { at: [842, 131], kind: 'none' },                      // emprise commune, remplacée par les deux bâtiments ci-dessous
+    { poly: rectPoly(834, 121, -0.338, 34, 22), kind: 'norway', h: 30 },                                     // The Norway (VIB)
+    { poly: [[848, 149], [887, 135.3], [896.5, 149], [856.4, 161.6]], kind: 'flat', h: 19, tone: 'white', roof: 0x6e2a30 }, // toit bordeaux
+    { poly: roundEndPoly(1049, 150, -0.39, 23, 15), kind: 'tower19', h: 36 },                                // tour de Quai XIX
     { at: [1112, 119], kind: 'brick', h: 16 }, { at: [1129, 158], kind: 'brick', h: 13 }, { at: [1096, 186], kind: 'brick', h: 15 },
     { at: [1113, 190], kind: 'brick', h: 16 }, { at: [1094, 106], kind: 'brick', h: 15 }, { at: [1088, 147], kind: 'brick', h: 12 },
-    { at: [1131, 83], kind: 'shed', h: 10 },               // anciens entrepôts du port, toits en sheds
-    { at: [1114, 22], kind: 'flat', h: 15, tone: 'office' }, { at: [1089, 88], kind: 'flat', h: 13, tone: 'office' },
+    { at: [1131, 83], kind: 'shed', h: 10 },
+    { at: [1114, 22], kind: 'flat', h: 22, tone: 'office' }, { at: [1089, 88], kind: 'flat', h: 13, tone: 'office' },
     { at: [1061, 93], kind: 'flat', h: 14, tone: 'office' }, { at: [1105, 74], kind: 'flat', h: 12, tone: 'office' }
   ];
 
   function presquileZone(data, exclude) {
     const picked = [];
     for (const s of PRESQ) {
+      if (s.poly) continue;
       let best = null, bd = 7;
       for (const b of data.b) {
         if (exclude(b) || picked.some(p => p.b === b)) continue;
@@ -3010,6 +3025,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
       }
       if (best) picked.push({ b: best, s });
     }
+    for (const s of PRESQ) if (s.poly) picked.push({ b: [s.h, 0, 0, 0, 0, 0, s.poly.flat()], s, synthetic: true });
     return picked;
   }
 
@@ -3060,6 +3076,12 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
       c.fillStyle = '#e8ecee'; c.fillRect(0, 0, s, s); c.fillStyle = 'rgba(120,130,140,0.25)'; for (let x = 0; x < s; x += 16) c.fillRect(x, 0, 2, s);
       c.fillStyle = '#5d6369'; c.fillRect(0, 232, s, 24); c.fillStyle = 'rgba(90,100,110,0.35)'; c.beginPath(); c.moveTo(0, 232); c.lineTo(s, 0); c.lineTo(s, 12); c.lineTo(12, 232); c.fill();
     });
+    const T_PAV = tex(5, 10.5, (c, s2) => {
+      c.fillStyle = '#f4f1e8'; c.fillRect(0, 0, s2, s2);
+      c.fillStyle = '#2d3640'; c.fillRect(40, 40, 176, 196); c.fillStyle = 'rgba(170,200,220,0.35)'; c.fillRect(40, 40, 176, 70);
+      c.fillStyle = '#f4f1e8'; for (let x = 40; x < 216; x += 44) c.fillRect(x, 40, 4, 196); c.fillRect(40, 120, 176, 5);
+      c.fillStyle = '#e4dfd2'; c.fillRect(0, 0, 18, s2); c.fillRect(238, 0, 18, s2); c.fillRect(0, 0, s2, 22);
+    });
     const T_SHED = tex(4, 4, (c, s) => { c.fillStyle = '#a7aaa8'; c.fillRect(0, 0, s, s); for (let x = 0; x < s; x += 12) { c.fillStyle = 'rgba(0,0,0,0.15)'; c.fillRect(x, 0, 4, s); } c.fillStyle = '#4c5257'; c.fillRect(20, 40, 216, 60); });
     const bufs = new Map(); // un tampon par texture
     const bufFor = (t) => { if (!bufs.has(t)) bufs.set(t, mkBuf()); return bufs.get(t); };
@@ -3103,11 +3125,9 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
         walls(ring, 4.6, H, T_LIB, C(0xffffff), 4.6 - 5.3);
         walls(ring, H, H + 0.9, T_CLAD, C(0xf6f6f4));
         cap(ring, H + 0.9, C(0xe9e9e6));
-        const o = pca(ring);
-        for (const [du, dv] of [[16, 0], [-16, 0], [0, 16], [0, -16]]) {
-          const x = o.cx + o.ux * du - o.uz * dv, z = o.cz + o.uz * du + o.ux * dv, hs = 4.5;
-          const sq = [[x - hs, z - hs], [x + hs, z - hs], [x + hs, z + hs], [x - hs, z + hs]].map(([px, pz]) => [o.cx + (px - o.cx), pz]);
-          if (sq.every(p => pip(p[0], p[1], ring))) cap(sq, H + 0.95, C(0x5f7d86), glassB);
+        for (const [px, pz, kind2] of s.patios || []) {
+          const hs = 4.2, sq = [[px - hs, pz - hs], [px + hs, pz - hs], [px + hs, pz + hs], [px - hs, pz + hs]];
+          if (kind2 === 'green') cap(sq, H + 0.95, C(0x6f8a4a)); else { cap(sq, H + 0.95, C(0x5f7d86), glassB); walls(sq, H + 0.9, H + 1.6, T_CLAD, C(0xf2f2f0)); }
         }
       } else if (s.kind === 'tribunal') {
         // socle vitré en retrait, auvent, cube de lames verticales blanches, oculus et patios en croix
@@ -3148,11 +3168,95 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
         cap(ring, H, C(0xbcc0c3));
         let we = null; for (const e of ringCols(ring).E) if (e.L > 10 && (!we || e.nx + e.nz * 0.5 < we.nx + we.nz * 0.5)) we = e;
         if (we) decal(signTexture('LE CARGÖ', '#cf1f2e', '#ffffff', 512, 256), 12, 6, we.a[0] + we.ux * Math.min(8, we.L / 2), H - 4, we.a[1] + we.uz * Math.min(8, we.L / 2), we.nx, we.nz);
+      } else if (s.kind === 'none') {
+        continue;
+      } else if (s.kind === 'norway') {
+        // gradins blancs : retraits progressifs, nez de balcon continus aux angles adoucis, garde-corps vitrés
+        const nf = Math.round(H / 3.1), fh = H / nf;
+        for (let f = 0; f < nf; f++) {
+          const step = s.mild ? Math.max(0, f - nf + 2) * 1.6 : Math.max(0, f - 3) * 1.15;
+          const rr = step > 0 ? grow(ring, step) : ring, y0 = f * fh, y1 = y0 + fh;
+          walls(rr, y0, y1, f === 0 ? T_LIB : T_WHITE, f === 0 ? C(0xf2f6f6) : C(0xffffff), y0);
+          if (f === 0) continue;
+          const slab = rdpRing(grow(rr, -1.5), 0.3);
+          cap(slab, y0, C(0xfbfbf9)); cap(slab, y0 - 0.32, C(0xe9e9e6), plain, down); walls(slab, y0 - 0.32, y0, T_CLAD, C(0xffffff));
+          walls(slab, y0, y0 + 1.05, T_LIB, C(0xe6f2f4));
+        }
+        const top = grow(ring, s.mild ? 1.6 : Math.max(0, nf - 4) * 1.15);
+        cap(top, H, C(0xdcdcd8)); walls(grow(top, -0.1), H, H + 0.9, T_CLAD, C(0xfbfbf9));
+      } else if (s.kind === 'tower19') {
+        // tour de Quai XIX : extrémité arrondie, balcons filants débordants, jardinières
+        const nf = Math.round(H / 3.05), fh = H / nf;
+        walls(ring, 0, H, T_WHITE, C(0xffffff));
+        for (let f = 1; f <= nf; f++) {
+          const y = f * fh, d = -(1.2 + 0.6 * Math.sin(f * 1.7));
+          const slab = grow(ring, d);
+          cap(slab, y, C(0xfbfbf9)); cap(slab, y - 0.3, C(0xe8e8e5), plain, down); walls(slab, y - 0.3, y, T_CLAD, C(0xffffff));
+          if (f < nf) walls(slab, y, y + 1.0, T_LIB, C(0xe6f2f4));
+        }
+        cap(ring, H + 0.1, C(0xd8d8d4));
+      } else if (s.kind === 'courtyard') {
+        // îlot ouvert : bâtiments blancs à balcons filants sur le pourtour, jardin planté au cœur
+        let inner = ring;
+        for (const cand of [ring, rdpRing(ring, 2), rdpRing(ring, 4)]) { for (const d of [13, 11, 9]) { const sg = signed(cand) > 0 ? 1 : -1, r2 = offsetRing(cand, d, sg); if (r2) { inner = r2; break; } } if (inner !== ring) break; }
+        const nf = Math.round(H / 3.05), fh = H / nf;
+        walls(ring, 0, H, T_WHITE, C(0xffffff));
+        if (inner !== ring) {
+          const { E } = ringCols(inner), B = bufFor(T_WHITE);
+          for (const e of E) B.quad(V(e.a[0], 0, e.a[1]), V(e.b[0], 0, e.b[1]), V(e.b[0], H, e.b[1]), V(e.a[0], H, e.a[1]), C(0xffffff), V(-e.nx, 0, -e.nz), [[0, 0], [e.L / 6, 0], [e.L / 6, H / 3], [0, H / 3]]);
+          const fo = [], fi = []; for (const q of ring) fo.push(q[0], q[1]); for (const q of inner) fi.push(q[0], q[1]);
+          for (const t of triangulate([fo, fi])) plain.tri(V(t[0].x, H, t[0].y), V(t[1].x, H, t[1].y), V(t[2].x, H, t[2].y), C(0xdcdcd8), up);
+          cap(inner, 4.5, C(0x7f9a55)); walls(inner, 0, 4.5, T_SHED, C(0xd9dcd8));
+        } else cap(ring, H, C(0xdcdcd8));
+        for (let f = 1; f < nf; f++) {
+          const y = f * fh, slab = grow(ring, -1.3);
+          cap(slab, y, C(0xfbfbf9)); cap(slab, y - 0.3, C(0xe8e8e5), plain, down); walls(slab, y - 0.3, y, T_CLAD, C(0xffffff));
+          walls(slab, y, y + 1.0, T_LIB, C(0xe6f2f4));
+        }
+      } else if (s.kind === 'garden') {
+        // socle de parkings et jardin en pente, planté de massifs
+        walls(ring, 0, H, T_SHED, C(0xd9dcd8));
+        const o = pca(ring);
+        const f = []; for (const q of ring) f.push(q[0], q[1]);
+        for (const t of triangulate([f])) {
+          const P2 = (v) => V(v.x, H + 2.5 * Math.max(0, ((v.x - o.cx) * o.ux + (v.y - o.cz) * o.uz) / 15), v.y);
+          plain.tri(P2(t[0]), P2(t[1]), P2(t[2]), C(0x8f9a64), up);
+        }
+      } else if (s.kind === 'podium') {
+        // socle de parkings couvert d'un jardin en pente
+        walls(ring, 0, H, T_SHED, C(0xd9dcd8));
+        cap(ring, H, C(0x7f9a55));
+      } else if (s.kind === 'grid') {
+        // béton clair, petites baies carrées en grille régulière
+        walls(ring, 0, H, T_OFFICE, C(0xe9e9e4));
+        cap(ring, H, C(0xb0b2b0)); walls(grow(ring, -0.1), H, H + 0.8, T_CLAD, C(0xe6e6e2));
+      } else if (s.kind === 'balcony') {
+        // volumes anthracite, balcons filants en porte-à-faux
+        const nf = Math.round(H / 3.0), fh = H / nf;
+        walls(ring, 0, H, T_DARK, C(0xffffff));
+        for (let f = 1; f < nf; f++) {
+          const y = f * fh, slab = grow(ring, -1.4);
+          cap(slab, y, C(0xa8acaf)); cap(slab, y - 0.25, C(0x8d9195), plain, down); walls(slab, y - 0.25, y, T_CLAD, C(0xd6d8d9));
+          walls(slab, y, y + 1.0, T_LIB, C(0x9fb3ba));
+        }
+        cap(ring, H, C(0x6f7376));
       } else if (s.kind === 'pavillon') {
-        // volume anthracite largement vitré, toit débordant
-        const E = walls(ring, 0, H, T_DARK, C(0x8a8f95));
-        for (const e of E) if (e.L > 8) { const B = bufFor(T_LIB); B.quad(V(e.a[0] + e.nx * 0.05, 0.2, e.a[1] + e.nz * 0.05), V(e.b[0] + e.nx * 0.05, 0.2, e.b[1] + e.nz * 0.05), V(e.b[0] + e.nx * 0.05, H * 0.62, e.b[1] + e.nz * 0.05), V(e.a[0] + e.nx * 0.05, H * 0.62, e.a[1] + e.nz * 0.05), C(0xbfe0e0), V(e.nx, 0, e.nz), [[0, 0], [e.L / 4.8, 0], [e.L / 4.8, 1], [0, 1]]); }
-        const eave = grow(ring, -1.5); cap(eave, H, C(0x2f3236)); cap(eave, H - 0.3, C(0x26282b), plain, down); walls(eave, H - 0.3, H, T_CLAD, C(0x3a3d41));
+        const o = pca(ring); let u0 = 1e9, u1 = -1e9;
+        for (const q of ring) { const u = (q[0] - o.cx) * o.ux + (q[1] - o.cz) * o.uz; u0 = Math.min(u0, u); u1 = Math.max(u1, u); }
+        const cut = u1 - (u1 - u0) * 0.3, side = (q) => (q[0] - o.cx) * o.ux + (q[1] - o.cz) * o.uz > cut;
+        const oldPart = ring.filter(q => !side(q)), newPart = ring.filter(side);
+        const clip = (pts, keepNew) => { // coupe le contour par la droite u = cut
+          const out = [];
+          for (let k = 0; k < ring.length; k++) {
+            const a = ring[k], b2 = ring[(k + 1) % ring.length], ia = side(a) === keepNew, ib = side(b2) === keepNew;
+            if (ia) out.push(a);
+            if (ia !== ib) { const ua = (a[0] - o.cx) * o.ux + (a[1] - o.cz) * o.uz, ub = (b2[0] - o.cx) * o.ux + (b2[1] - o.cz) * o.uz, t = (cut - ua) / (ub - ua); out.push([a[0] + (b2[0] - a[0]) * t, a[1] + (b2[1] - a[1]) * t]); }
+          }
+          return out;
+        };
+        const A = clip(oldPart, false), Bn = clip(newPart, true);
+        if (A.length >= 3) { walls(A, 0, H, T_PAV, C(0xffffff)); walls(grow(A, -0.25), H - 0.6, H, T_CLAD, C(0xfbfaf6)); cap(A, H, C(0xcfcfca)); }
+        if (Bn.length >= 3) { walls(Bn, 0, H * 0.78, T_LIB, C(0x56606a)); cap(Bn, H * 0.78, C(0x26292c)); walls(grow(Bn, -0.1), H * 0.78 - 0.4, H * 0.78, T_CLAD, C(0x2c2f33)); }
       } else if (s.kind === 'stack') {
         // volumes empilés et décalés : porte-à-faux, retraits, nez de dalle marqués
         const t = s.tone === 'dark' ? T_DARK : T_WHITE;
@@ -3207,9 +3311,13 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     }
 
     // sol : terrain en herbe sèche, anneau de land art, sculpture de sphères d'acier
-    const field = [[940, 146], [991, 117], [1083, 248], [1055, 262]];
+    const field = [[935.6, 145.8], [987.3, 116.3], [1080, 249.2], [1063, 260], [940.8, 158.5]];
     const fieldMesh = flatMesh([[field.flat()]], 0.07, lam({ color: 0xa79a6c }), 10); scene.add(layer(fieldMesh, 3.5));
-    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(15, 0.9, 8, 64), lam({ color: 0xf2f2ef })); ring2.rotation.x = Math.PI / 2; ring2.position.set(1004, 0.5, 190); ring2.castShadow = true; g.add(ring2);
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(13, 0.8, 8, 64), lam({ color: 0xf2f2ef })); ring2.rotation.x = Math.PI / 2; ring2.position.set(983, 0.5, 163); ring2.castShadow = true; g.add(ring2);
+    // disque blanc à spirale, posé dans l'herbe à côté de l'anneau
+    const spiralTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#f4f4f1'; x.fillRect(0, 0, 128, 128); x.strokeStyle = '#8a8f93'; x.lineWidth = 5; x.beginPath(); for (let t = 0; t < 18; t += 0.1) { const r = t * 3.2; x.lineTo(64 + Math.cos(t) * r, 64 + Math.sin(t) * r); } x.stroke(); return new THREE.CanvasTexture(c); })();
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 0.5, 32), [lam({ color: 0xf0f0ed }), lam({ map: spiralTex }), lam({ color: 0xe6e6e3 })]);
+    disc.position.set(961, 0.25, 155); disc.castShadow = true; g.add(disc);
     const steel = new THREE.MeshPhongMaterial({ color: 0xc9ced3, shininess: 120, specular: 0xffffff });
     for (let k = 0; k < 14; k++) { const sp = new THREE.Mesh(new THREE.SphereGeometry(0.9 + hashI(k, 3) * 1.4, 16, 12), steel); sp.position.set(868 + (hashI(k, 4) - 0.5) * 9, 1.2 + hashI(k, 5) * 5, 72 + (hashI(k, 6) - 0.5) * 9); sp.castShadow = true; g.add(sp); }
 
@@ -3431,7 +3539,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     const pq = presquileZone(data, b => ofCastle(b) || churchB.has(b) || OVR.has(b) || vaugSet.has(b));
     for (const p of pq) vaugSet.add(p.b);
     buildPresquile(pq, nightMats);
-    data.labels.push(["Presqu'île", 1005, 190, 22]);
+    data.labels.push(["Presqu'île", 975, 175, 24]);
     // les grands îlots de la Reconstruction à part : ils disparaissent quand on remonte à l'été 1944
     const town = data.b.filter(b => !ofCastle(b) && !churchB.has(b) && !vaugSet.has(b));
     const isReco = (b) => { if (b[1] !== 0 || OVR.has(b)) return false; const r = pairs(b[6]); return Math.abs(signed(r)) / 2 >= (r[0][0] < -150 ? 420 : 220); };
