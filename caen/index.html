@@ -1208,7 +1208,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     let k = 0;
     boats.forEach(([x, z, ang, len, hasSail], i) => {
       q.setFromAxisAngle(up, -ang);
-      p.set(x, 0.45, z); s.set(len, len * 0.32, len * 0.32);
+      p.set(x, WATER_Y + 0.45, z); s.set(len, len * 0.32, len * 0.32);
       hulls.setMatrixAt(i, m.compose(p, q, s));
       cabins.setMatrixAt(i, m.compose(p, q, s.set(len, len * 0.32, len * 0.32)));
       if (hasSail) { s.set(1, len * 1.3, 1); masts.setMatrixAt(k++, m.compose(p, q, s)); }
@@ -2185,7 +2185,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     const M = 40;
     const woodSide = lam({ map: TEX.woodPlinth });
     TEX.woodPlinth.repeat.set(6, 0.4);
-    const plinth = new THREE.Mesh(new THREE.BoxGeometry(W + M * 2, 40, D + M * 2), [woodSide, woodSide, lam({ color: 0x4a3324 }), woodSide, woodSide, woodSide]);
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(W + M * 2, 40, D + M * 2), [woodSide, woodSide, maskOut(lam({ color: 0x4a3324 })), woodSide, woodSide, woodSide]);
     plinth.position.y = -20.1;
     plinth.receiveShadow = true;
     scene.add(plinth);
@@ -3312,7 +3312,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
 
     // sol : terrain en herbe sèche, anneau de land art, sculpture de sphères d'acier
     const field = [[935.6, 145.8], [987.3, 116.3], [1080, 249.2], [1063, 260], [940.8, 158.5]];
-    const fieldMesh = flatMesh([[field.flat()]], 0.07, lam({ color: 0xa79a6c }), 10); scene.add(layer(fieldMesh, 3.5));
+    const fieldMesh = flatMesh([[field.flat()]], 0.07, maskOut(lam({ color: 0xa79a6c })), 10); scene.add(layer(fieldMesh, 3.5));
     const ring2 = new THREE.Mesh(new THREE.TorusGeometry(13, 0.8, 8, 64), lam({ color: 0xf2f2ef })); ring2.rotation.x = Math.PI / 2; ring2.position.set(983, 0.5, 163); ring2.castShadow = true; g.add(ring2);
     // disque blanc à spirale, posé dans l'herbe à côté de l'anneau
     const spiralTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#f4f4f1'; x.fillRect(0, 0, 128, 128); x.strokeStyle = '#8a8f93'; x.lineWidth = 5; x.beginPath(); for (let t = 0; t < 18; t += 0.1) { const r = t * 3.2; x.lineTo(64 + Math.cos(t) * r, 64 + Math.sin(t) * r); } x.stroke(); return new THREE.CanvasTexture(c); })();
@@ -3330,9 +3330,11 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     g.traverse(o => { if (o.isMesh && o.material.map === libLit) { o.material.emissive = new THREE.Color(0xffe2b0); o.material.emissiveMap = libLit; o.material.emissiveIntensity = 0; hookNight.push([o.material, 0.45]); } });
     whiteHooks.push(on => g.traverse(o => {
       if (!o.isMesh) return;
-      const m = o.material, u = m.userData;
-      if (u.map === undefined) { u.map = m.map || null; u.vc = m.vertexColors; u.c0 = m.color.getHex(); }
-      m.map = on ? null : u.map; m.vertexColors = on ? false : u.vc; m.color.set(on ? 0xf6f4f0 : u.c0); m.needsUpdate = true;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) { // certains objets ont plusieurs matériaux
+        const u = m.userData;
+        if (u.map === undefined) { u.map = m.map || null; u.vc = m.vertexColors; u.c0 = m.color.getHex(); }
+        m.map = on ? null : u.map; m.vertexColors = on ? false : u.vc; m.color.set(on ? 0xf6f4f0 : u.c0); m.needsUpdate = true;
+      }
     }));
     solids.add(g);
     return g;
@@ -3347,7 +3349,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
       c.fillStyle = '#d9d7d1'; c.fillRect(0, 0, s, s);
       for (let y = 0; y < s; y += 32) for (let x = 0; x < s; x += 64) { const l = 212 + Math.random() * 18; c.fillStyle = `rgb(${l},${l - 1},${l - 5})`; c.fillRect(x + 1, y + 1, 62, 30); }
     });
-    scene.add(layer(flatMesh([[plaza.flat()]], 0.06, lam({ map: slabTex }), 8), 5.5));
+    scene.add(layer(flatMesh([[plaza.flat()]], 0.06, maskOut(lam({ map: slabTex })), 8), 5.5));
 
     // bittes d'amarrage le long du bord du bassin Saint-Pierre, côté presqu'île
     const bol = [];
@@ -3371,13 +3373,13 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     // ponton flottant et passerelle, au pied de la bibliothèque, avec quelques kayaks
     const wood = lam({ color: 0x8a6a4a }), metal = lam({ color: 0x8e9499 });
     const pa = 0.845; // orientation du ponton, parallèle au quai
-    const pont = new THREE.Mesh(new THREE.BoxGeometry(22, 0.45, 3.2), wood); pont.position.set(841.5, 0.25, 241.5); pont.rotation.y = -pa; pont.castShadow = pont.receiveShadow = true; g.add(pont);
-    const gang = new THREE.Mesh(new THREE.BoxGeometry(9, 0.15, 1.4), metal); gang.position.set(846.5, 0.55, 236); gang.rotation.y = -pa + Math.PI / 2; gang.rotation.z = 0.08; g.add(gang);
+    const pont = new THREE.Mesh(new THREE.BoxGeometry(22, 0.45, 3.2), wood); pont.position.set(841.5, WATER_Y + 0.35, 241.5); pont.rotation.y = -pa; pont.castShadow = pont.receiveShadow = true; g.add(pont);
+    const gang = new THREE.Mesh(new THREE.BoxGeometry(9, 0.15, 1.4), metal); gang.position.set(846.5, WATER_Y / 2 + 0.2, 236); gang.rotation.y = -pa + Math.PI / 2; gang.rotation.z = 0.24; g.add(gang);
     const KAY = [0xe2502e, 0xf2c230, 0x2f7fbf, 0x3aa35a];
     for (let k = 0; k < 4; k++) {
       const kayak = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 4.2, 8), lam({ color: KAY[k] }));
       kayak.scale.set(1, 1, 0.45); kayak.rotation.z = Math.PI / 2; kayak.rotation.y = -pa;
-      kayak.position.set(841.5 + Math.cos(pa) * (k * 4.5 - 7) - Math.sin(pa) * 2.4, 0.18, 241.5 + Math.sin(pa) * (k * 4.5 - 7) + Math.cos(pa) * 2.4);
+      kayak.position.set(841.5 + Math.cos(pa) * (k * 4.5 - 7) - Math.sin(pa) * 2.4, WATER_Y + 0.25, 241.5 + Math.sin(pa) * (k * 4.5 - 7) + Math.cos(pa) * 2.4);
       g.add(kayak);
     }
 
@@ -3401,6 +3403,100 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     return g;
   }
 
+  // ---------- Eau creusée, murs de quai, ponts ----------
+  const WATER_Y = -2.2; // surface de l'eau sous le niveau des quais
+  const waterRings = []; // { outer, holes, bbox }
+  function inWater(x, z) {
+    for (const w of waterRings) {
+      if (x < w.bb[0] || x > w.bb[1] || z < w.bb[2] || z > w.bb[3]) continue;
+      if (pip(x, z, w.outer) && !w.holes.some(h => pip(x, z, h))) return true;
+    }
+    return false;
+  }
+  // le sol, les pelouses et les dalles s'effacent au-dessus de l'eau (pochoir), les routes restent : ce sont les tabliers
+  function maskOut(mat) {
+    mat.stencilWrite = true; mat.stencilWriteMask = 0; mat.stencilRef = 1;
+    mat.stencilFunc = THREE.NotEqualStencilFunc; mat.stencilFail = mat.stencilZFail = mat.stencilZPass = THREE.KeepStencilOp;
+    return mat;
+  }
+  function buildWaterWorks(data) {
+    for (const w of data.w) {
+      const outer = pairs(w[1]); if (outer.length < 3) continue;
+      const holes = w.slice(2).map(pairs).filter(h => h.length >= 3);
+      let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (const p of outer) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); }
+      waterRings.push({ outer, holes, bb: [x0, x1, z0, z1] });
+    }
+    // pochoir : l'empreinte de l'eau, invisible, marque le tampon avant le dessin du sol
+    const mask = flatMesh(data.w.map(w => w.slice(1)), 0, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }), 10);
+    mask.renderOrder = 0.5; scene.add(mask);
+
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const pos = [], col = [];
+    const quad = (a, b, c, d, color, want) => {
+      const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+      const pts = n.dot(want) < 0 ? [a, c, b, a, d, c] : [a, b, c, a, c, d];
+      for (const p of pts) { pos.push(p.x, p.y, p.z); col.push(color.r, color.g, color.b); }
+    };
+    // murs de quai : parement de pierre de l'eau jusqu'au niveau des quais
+    const stoneA = C(0xb9b1a0), stoneB = C(0x9c9483);
+    for (const w of waterRings) for (const [ring, isHole] of [[w.outer, false], ...w.holes.map(h => [h, true])]) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.05) continue;
+        let nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
+        const inside = pip((a[0] + b[0]) / 2 + nx * 0.3, (a[1] + b[1]) / 2 + nz * 0.3, ring);
+        if (inside === isHole) { nx = -nx; nz = -nz; } // la face regarde l'eau
+        quad(V(a[0], WATER_Y - 0.6, a[1]), V(b[0], WATER_Y - 0.6, b[1]), V(b[0], 0.02, b[1]), V(a[0], 0.02, a[1]), i % 2 ? stoneA : stoneB, V(nx, 0, nz));
+        quad(V(a[0], -0.15, a[1]), V(b[0], -0.15, b[1]), V(b[0], 0.03, b[1]), V(a[0], 0.03, a[1]), C(0xd6d0c2), V(nx, 0, nz)); // couronnement
+      }
+    }
+    // ponts : là où une voie franchit l'eau, un tablier épais, des garde-corps et des piles
+    const deckC = C(0xb7b2a8), sideC = C(0xa29d93), rail = C(0x4c5156), pierC = C(0xa8a294);
+    const box = (ax, az, bx, bz, hw, y0, y1, color) => {
+      const L = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / L, uz = (bz - az) / L, nx = -uz * hw, nz = ux * hw;
+      const P = [[ax + nx, az + nz], [bx + nx, bz + nz], [bx - nx, bz - nz], [ax - nx, az - nz]];
+      const cx = (ax + bx) / 2, cz = (az + bz) / 2;
+      for (let k = 0; k < 4; k++) { const p = P[k], q = P[(k + 1) % 4]; quad(V(p[0], y0, p[1]), V(q[0], y0, q[1]), V(q[0], y1, q[1]), V(p[0], y1, p[1]), color, V((p[0] + q[0]) / 2 - cx, 0, (p[1] + q[1]) / 2 - cz)); }
+      quad(V(P[0][0], y1, P[0][1]), V(P[1][0], y1, P[1][1]), V(P[2][0], y1, P[2][1]), V(P[3][0], y1, P[3][1]), color, V(0, 1, 0));
+      quad(V(P[0][0], y0, P[0][1]), V(P[1][0], y0, P[1][1]), V(P[2][0], y0, P[2][1]), V(P[3][0], y0, P[3][1]), color.clone().multiplyScalar(0.75), V(0, -1, 0));
+    };
+    const lines = data.r.map(r => ({ w: r[0], p: pairs(r[2]), road: true })).concat(data.tram.map(f => ({ w: 2.8, p: pairs(f), road: false })));
+    let nBridges = 0;
+    for (const ln of lines) {
+      // découpe en tronçons de 4 m et repère ceux qui sont au-dessus de l'eau
+      const pieces = [];
+      for (let i = 0; i < ln.p.length - 1; i++) {
+        const [x1, z1] = ln.p[i], [x2, z2] = ln.p[i + 1], L = Math.hypot(x2 - x1, z2 - z1), n = Math.max(1, Math.ceil(L / 4));
+        for (let k = 0; k < n; k++) {
+          const ax = x1 + (x2 - x1) * k / n, az = z1 + (z2 - z1) * k / n, bx = x1 + (x2 - x1) * (k + 1) / n, bz = z1 + (z2 - z1) * (k + 1) / n;
+          pieces.push({ ax, az, bx, bz, wet: inWater((ax + bx) / 2, (az + bz) / 2) });
+        }
+      }
+      if (!pieces.some(p => p.wet)) continue;
+      // un tronçon sec voisin de l'eau sert d'appui : le tablier déborde sur la culée
+      const on = pieces.map((p, i) => p.wet || (pieces[i - 1] && pieces[i - 1].wet) || (pieces[i + 1] && pieces[i + 1].wet));
+      const hw = ln.w / 2 + 0.6;
+      let run = 0;
+      pieces.forEach((p, i) => {
+        if (!on[i]) { run = 0; return; }
+        nBridges++;
+        box(p.ax, p.az, p.bx, p.bz, hw, -1.1, -0.01, deckC);
+        box(p.ax, p.az, p.bx, p.bz, hw + 0.05, -1.25, -1.1, sideC); // corniche sous le tablier
+        const L = Math.hypot(p.bx - p.ax, p.bz - p.az) || 1, ux = (p.bx - p.ax) / L, uz = (p.bz - p.az) / L;
+        for (const sd of [-1, 1]) { // garde-corps
+          const ox = -uz * (hw - 0.15) * sd, oz = ux * (hw - 0.15) * sd;
+          box(p.ax + ox, p.az + oz, p.bx + ox, p.bz + oz, 0.12, -0.01, ln.road ? 1.05 : 1.2, ln.road ? sideC : rail);
+        }
+        if (p.wet) { run += L; if (run > 18) { run = 0; box(p.ax - ux * 0.7, p.az - uz * 0.7, p.ax + ux * 0.7, p.az + uz * 0.7, hw * 0.8, WATER_Y - 0.6, -1.25, pierC); } }
+      });
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, lam({ vertexColors: true }));
+    m.castShadow = m.receiveShadow = true;
+    solids.add(m);
+    return nBridges;
+  }
+
   // ---------- Post-traitement ----------
   const composer = new THREE.EffectComposer(renderer);
   composer.setPixelRatio(PR);
@@ -3408,6 +3504,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
   const ssao = new THREE.SSAOPass(scene, camera, innerWidth, innerHeight);
   ssao.kernelSize = 16;
   ssao.beautyRenderTarget.samples = 4;
+  ssao.beautyRenderTarget.stencilBuffer = true; // pochoir de l'eau creusée
   const origOverride = ssao.overrideVisibility.bind(ssao), origRestore = ssao.restoreVisibility.bind(ssao);
   ssao.overrideVisibility = function () {
     origOverride();
@@ -3453,12 +3550,11 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
   const labelEls = [];
 
   buildPlinth();
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W, D), lam({ map: TEX.ground }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W, D, 96, 72).rotateX(-Math.PI / 2), maskOut(lam({ map: TEX.ground })));
   TEX.ground.repeat.set(W / 40, D / 40);
-  ground.rotation.x = -Math.PI / 2;
   scene.add(layer(ground, 1));
 
-  fetch('caen.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(data => {
+  fetch('caen.json', { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(data => {
     document.getElementById('m-b').textContent = data.b.length.toLocaleString('fr-FR');
     document.getElementById('m-t').textContent = data.trees.length.toLocaleString('fr-FR');
     labelsData = data.labels;
@@ -3468,8 +3564,8 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     const grass = data.p.filter(p => p[0] === 0).map(p => p.slice(1));
     const woods = data.p.filter(p => p[0] === 1).map(p => p.slice(1));
     const pedAreas = data.p.filter(p => p[0] === 2).map(p => p.slice(1));
-    scene.add(layer(flatMesh(grass, 0.05, lam({ map: TEX.grass }), 24), 2));
-    scene.add(layer(flatMesh(woods, 0.05, lam({ map: TEX.wood }), 20), 3));
+    scene.add(layer(flatMesh(grass, 0.05, maskOut(lam({ map: TEX.grass })), 24), 2));
+    scene.add(layer(flatMesh(woods, 0.05, maskOut(lam({ map: TEX.wood })), 20), 3));
     // eau miroir : reflets des façades, des bateaux et des lumières de la nuit, ondulée par le vent
     {
       const wg = flatMesh(data.w.map(w => w.slice(1)), 0, lam({}), 28).geometry, pa = wg.attributes.position.array;
@@ -3478,7 +3574,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
       TEX.waterN.repeat.set(1, 1);
       water = new THREE.Water(wg, { textureWidth: 512, textureHeight: 512, waterNormals: TEX.waterN, sunDirection: sunDir.clone(), sunColor: 0xfff0d8, waterColor: 0x2f4f5e, distortionScale: 1.4, fog: true, alpha: 1 });
       water.material.uniforms.size.value = 3.5;
-      water.rotation.x = -Math.PI / 2; water.position.y = 0.06;
+      water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; 
       // le reflet n'est calculé qu'une fois par image (la passe d'occlusion redessine la scène)
       const ob = water.onBeforeRender.bind(water); let lastF = -1;
       water.onBeforeRender = (...a) => { if (frameNo !== lastF) { lastF = frameNo; ob(...a); } };
@@ -3493,12 +3589,12 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     }
     wetMats.push(ground.material);
     const wet = (mesh) => { wetMats.push(mesh.material); return mesh; };
-    scene.add(layer(wet(flatMesh(pedAreas, 0.05, lam({ map: TEX.paving }), 5)), 5));
+    scene.add(layer(wet(flatMesh(pedAreas, 0.05, maskOut(lam({ map: TEX.paving })), 5)), 5));
     const R = (cls) => data.r.filter(r => r[1] === cls).map(r => ({ w: r[0], f: r[2] }));
     scene.add(layer(wet(new THREE.Mesh(ribbonGeo(R(0), 0.05, i => i.w, 0, 10), lam({ map: TEX.foot }))), 6));
     scene.add(layer(wet(new THREE.Mesh(ribbonGeo(R(2), 0.05, i => i.w, 0, 5), lam({ map: TEX.paving }))), 7));
     // trottoirs clairs de part et d'autre des chaussées
-    scene.add(layer(wet(new THREE.Mesh(ribbonGeo(R(1), 0.05, i => i.w + 3.6, 0, 6), lam({ map: TEX.foot, color: 0xe2e0db }))), 4.5));
+    scene.add(layer(wet(new THREE.Mesh(ribbonGeo(R(1), 0.05, i => i.w + 3.6, 0, 6), maskOut(lam({ map: TEX.foot, color: 0xe2e0db })))), 4.5));
     scene.add(layer(wet(new THREE.Mesh(ribbonGeo(R(1), 0.05, i => i.w, 0, 12), lam({ map: TEX.asphalt }))), 8));
     // marquage axial en tirets sur les grands axes
     const dashes = [];
@@ -3521,6 +3617,7 @@ button.lp[aria-pressed="true"] { background: linear-gradient(120deg, #b30f2a, #e
     trafficGroup = buildTraffic(data);
     streetBits = buildStreetDetails(data);
     buildSky(); buildRain();
+    buildWaterWorks(data);
     // sols mouillés sous la pluie : plus sombres
     const wetBase = wetMats.map(m => m.color.clone());
     hourHooks.push(() => wetMats.forEach((m, i) => m.color.copy(wetBase[i]).multiplyScalar(rainOn ? 0.68 : 1)));
